@@ -8,6 +8,6 @@ R1短维护：补齐独立TLS固定版本的原锁文件及本地准备脚本，
 
 验证：目标分支HEAD相等、ignored秘密未跟踪；源码/资产/所有新blob与现有git历史实际秘密值0匹配；TLS准备校验/Worker dry-run成功；必要typescript检查/格式检查；提交后remote main回读与本地一致。
 
-状态：本地构建准备与验证完成，提交/切换origin/推送执行中。
+状态：本地构建准备与验证完成；origin已切换到指定仓库，main普通快进推送成功，已回读核验。项目提交7987d353f5b419c37c82718cda834f78d3392963；本记录的闭环提交仅更新任务状态。现有本机signals修改继续保留，未提交。
 
 本地证据：隔离空目录npm ci安装25个固定依赖，严格TLS补丁原/后SHA256与既有运行时一致；原目录缓存准备与Worker dry-run通过。TypeScript检查通过。output/flareapi/git-secret-audit.json：候选273文件与全部历史446 blob实际认证秘密0匹配，公开节点IP不按秘密误报；.env与output忽略。线上本轮不写入。
