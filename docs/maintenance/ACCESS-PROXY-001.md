@@ -19,7 +19,7 @@ Access 公钥读取使用通用 timedFetch，继而使用 Webshare proxyFetch；
 
 ## 验证与发布状态
 
-实施：完成。验证：通过。独立审查：[通过](../verification/ACCESS-PROXY-001-review.md)。GitHub发布：准备完成，待推送。Worker上线：已发布并回读验证。
+实施：完成。验证：通过。独立审查：[通过](../verification/ACCESS-PROXY-001-review.md)。GitHub发布：[已推送并发布](https://github.com/arctan303/FlareAPI-Codex/releases/tag/v0.2.0-dev.5)，附件回下载校验通过。Worker上线：已发布并回读验证。
 集成回归覆盖 Access session/管理接口、节点启用与未配置节点、错误AUD/过期/伪造签名、Codex保持代理、相似域名/子域/非HTTPS/异常端口/query/path/method拒绝直连、秘密头剥离、取消传播、重定向失败关闭。
 验证命令：npm run typecheck 通过；vitest --config vitest.node.config.ts 全部51/51通过，原有 test/access.test.ts 9/9通过；TLS准备校验与Worker dry-run通过；Node build/package通过，独立payload和archive安装启动检查2/2通过。
 发布产物：dist/oneapi-server-0.2.0-dev.5.tar.gz，119620 bytes，SHA256 28ff316ec7fa76ac090547636c99eb0ef962bd3f15adb60cf78555be4adf88e6。
@@ -37,3 +37,5 @@ Ignored证据：output/flareapi/access-fix-before.json、access-fix-live-before.
 回滚：wrangler versions deploy 79a703da-9d54-4996-9051-6d086ce7d66c@100 --config wrangler.flareapi.jsonc --yes（保持原DO与平台Secret），Git按修复提交回退；不要重生成加密密钥。
 
 提交审计：285个索引文件实际配置秘密0命中、无私有runtime文件。启发式筛查唯一命中既有 scripts/test-webshare-tls.mjs 的 BEGIN PRIVATE KEY 标记，核验其来自现场生成ECDSA密钥的PKCS8导出/拼接，没有字面私钥，且与HEAD基线完全一致；人工分类为测试格式标记，未忽略实际秘密匹配或扩大白名单。未解决审计项0。
+
+Git发布闭环：修复提交224f5d2，annotated tag v0.2.0-dev.5与main普通原子推送成功；GitHub预发布非draft，安装包及sha256附件uploaded。GitHub回下载、原始包与校验文件三方SHA256一致（28ff316ec7fa76ac090547636c99eb0ef962bd3f15adb60cf78555be4adf88e6）。回下载副本校验后删除，保留安装包与此记录。前轮LOCAL-CLEANUP-001和batch修改保持未提交，不归入本次发布。

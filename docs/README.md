@@ -1,6 +1,6 @@
 # FlareAPI 使用说明
 
-当前小版本 v0.2.0-dev.5：修复 Access 登录后的公钥读取失败；FlareAPI Worker 已上线并回读验证，GitHub 小版本准备推送。验证及恢复见 [ACCESS-PROXY-001](maintenance/ACCESS-PROXY-001.md)，版本说明见 [dev.5](releases/v0.2.0-dev.5.md)。
+当前小版本 v0.2.0-dev.5：修复 Access 登录后的公钥读取失败；FlareAPI Worker 已上线并回读验证，GitHub 小版本已推送并发布，附件回下载校验通过。验证及恢复见 [ACCESS-PROXY-001](maintenance/ACCESS-PROXY-001.md)，版本说明见 [dev.5](releases/v0.2.0-dev.5.md)。
 
 更新时间：2026-09-08。当前产品主路径是轻量单服务器：Node.js 24.x（至少 24.15）、一个生产 bundle、一个 Node 进程和一个业务 SQLite 文件。dev.4 已在本机用真实账号跑通 Codex 0.153.4 模型目录、文本、只读工具续轮与未知字段兼容，并完成桌面/390px 后台验收、fresh R2 审查和 GitHub prerelease/附件回下载校验；发布状态见 [RELEASE-005](verification/RELEASE-005.md)。用户已有远端 Node 安装，本次不会自动升级或部署。
 
