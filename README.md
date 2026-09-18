@@ -1,10 +1,10 @@
 # FlareAPI
 
-本地新增（待发布）：可保存多个 Codex 账号，后台手动切换默认，已有 API 密钥跟随默认。账号首次各自授权，添加不会覆盖原账号。当前验证及上线边界见 [MULTI-ACCOUNT-001](docs/tasks/MULTI-ACCOUNT-001.md)。
+v0.2.0-dev.6 已发布：可保存多个 Codex 账号，后台手动切换默认，已有 API 密钥跟随默认。账号首次各自授权，添加不会覆盖原账号。验证及发布证据见 [MULTI-ACCOUNT-001](docs/tasks/MULTI-ACCOUNT-001.md)。
 
-> v0.2.0-dev.5 修复 Cloudflare Access 登录后无法进入后台的问题，保留 Codex 原生接入及现有管理后台能力。网络配置与 Tunnel / 公网 HTTPS / 反代安装见 [网络配置教程](docs/NETWORK.md)。
+> v0.2.0-dev.6 支持保存多个账号并手动选择默认，保留 dev.5 的 Cloudflare Access 登录修复和现有管理后台能力。网络配置与 Tunnel / 公网 HTTPS / 反代安装见 [网络配置教程](docs/NETWORK.md)。
 
-当前版本：[v0.2.0-dev.5 发布说明](docs/releases/v0.2.0-dev.5.md)，[GitHub 小版本](https://github.com/arctan303/FlareAPI-Codex/releases/tag/v0.2.0-dev.5)。首次安装请下载 Release 的 `oneapi-server-*.tar.gz` 附件。
+当前版本：[v0.2.0-dev.6 发布说明](docs/releases/v0.2.0-dev.6.md)，[GitHub 小版本](https://github.com/arctan303/FlareAPI-Codex/releases/tag/v0.2.0-dev.6)。首次安装请下载 Release 的 `oneapi-server-*.tar.gz` 附件。
 
 个人 Codex 订阅网关。当前主路径是轻量单服务器：一个 Node.js 进程、一个业务 SQLite 数据库和原有静态管理后台/API。生产运行不依赖 Wrangler、Miniflare、workerd、Docker、Redis、D1 或 KV；Cloudflare Access 管理登录和管理员 API key 兜底继续保留。
 
@@ -92,7 +92,7 @@ node --env-file=.dev.vars dist/server/migrate.mjs --legacy-root .wrangler/state/
 
 ## FlareAPI Worker
 
-线上后台：[FlareAPI](https://flareapi.12213443th.workers.dev/admin/login)。当前版本 60bcc6b6-be02-46ac-bf91-01a085aad3be（v0.2.0-dev.5），只需 `ADMIN_API_KEY` 登录密码，内部加密密钥持久保存在专属 DO。没有默认代理：后台填写 Webshare API key → 刷新节点列表 → 选择节点 → 独立测速或测试并启用；保存 key、同步和测速均不会自动启用。无启用节点时停止上游调用。第三方调用使用后台创建的 API key。
+线上后台：[FlareAPI](https://flareapi.arctan.workers.dev/admin/login)。当前版本 1949a90d-0b39-49c3-adb4-075698c1bfae（v0.2.0-dev.6），只需 `ADMIN_API_KEY` 登录密码，内部加密密钥持久保存在专属 DO。没有默认代理：后台填写 Webshare API key → 刷新节点列表 → 选择节点 → 独立测速或测试并启用；保存 key、同步和测速均不会自动启用。无启用节点时停止上游调用。第三方调用使用后台创建的 API key。
 
 后台测速从账号 DO 发起，显示三次 TCP 连接耗时中位数与成功次数，结果不切换出口。当前实例尚未连接 Codex、没有节点；需填写自己的 Webshare key并启用节点后连接账号。当前平台运行时仅 ADMIN_API_KEY Secret，加上必要 ACCOUNT/ASSETS 绑定；原多余变量已清理。
 

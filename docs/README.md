@@ -1,8 +1,8 @@
 # FlareAPI 使用说明
 
-本地新增（待发布）：可保存多个 Codex 账号，后台手动切换默认，已有 API 密钥跟随默认。账号首次各自授权，添加不会覆盖原账号。当前验证及上线边界见 [MULTI-ACCOUNT-001](tasks/MULTI-ACCOUNT-001.md)。
+v0.2.0-dev.6 已发布：可保存多个 Codex 账号，后台手动切换默认，已有 API 密钥跟随默认。账号首次各自授权，添加不会覆盖原账号。验证及发布证据见 [MULTI-ACCOUNT-001](tasks/MULTI-ACCOUNT-001.md)。
 
-当前小版本 v0.2.0-dev.5：修复 Access 登录后的公钥读取失败；FlareAPI Worker 已上线并回读验证，GitHub 小版本已推送并发布，附件回下载校验通过。验证及恢复见 [ACCESS-PROXY-001](maintenance/ACCESS-PROXY-001.md)，版本说明见 [dev.5](releases/v0.2.0-dev.5.md)。
+当前小版本 v0.2.0-dev.6：多账号功能已上线，原账号及设置无损保留；GitHub预发布及附件回下载校验通过。版本说明见 [dev.6](releases/v0.2.0-dev.6.md)。dev.5的Access公钥修复继续保留，历史证据见 [ACCESS-PROXY-001](maintenance/ACCESS-PROXY-001.md)。
 
 更新时间：2026-09-08。当前产品主路径是轻量单服务器：Node.js 24.x（至少 24.15）、一个生产 bundle、一个 Node 进程和一个业务 SQLite 文件。dev.4 已在本机用真实账号跑通 Codex 0.153.4 模型目录、文本、只读工具续轮与未知字段兼容，并完成桌面/390px 后台验收、fresh R2 审查和 GitHub prerelease/附件回下载校验；发布状态见 [RELEASE-005](verification/RELEASE-005.md)。用户已有远端 Node 安装，本次不会自动升级或部署。
 
@@ -78,7 +78,7 @@ Git 归档目标仍为 arctan303/OneAPI，第一版为 v0.1.0；归档细节见 
 
 ## FlareAPI Worker（2026-09-18）
 
-当前后台 https://flareapi.12213443th.workers.dev/admin/login ，API Base为 https://flareapi.12213443th.workers.dev/v1 。版本 60bcc6b6-be02-46ac-bf91-01a085aad3be（v0.2.0-dev.5），100%发布，已上线单密码与后台独立测速。
+当前后台 https://flareapi.arctan.workers.dev/admin/login ，API Base为 https://flareapi.arctan.workers.dev/v1 。版本 1949a90d-0b39-49c3-adb4-075698c1bfae（v0.2.0-dev.6），100%发布，已上线多账号、单密码与后台独立测速。
 
 仅 ADMIN_API_KEY 登录密钥；ACCOUNT/ASSETS 为必要平台绑定。内部加密密钥保存于原专属DO，已用原密钥完成持久迁移并验证删除TOKEN后可读取。GATEWAY_API_KEY、PROXY_CONFIG、TOKEN_ENCRYPTION_KEY Secret及ONEAPI_INSTANCE_KEYS_SHA256、PUBLIC_ORIGIN、WORKER_ORIGIN普通变量已清理。登录密钥保持原值，保存于ignore .env.worker-flareapi.json；原秘密ignore .env.worker-flareapi.legacy.json供恢复，不再作为当前必填配置。
 

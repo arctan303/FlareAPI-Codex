@@ -144,7 +144,7 @@ GET/HEAD /固定跳转/admin/login。GET /admin/login和GET /admin/仅提供无�
 ## FlareAPI Worker 后台 TCP 测速（已上线）
 
 POST /admin/webshare/measure，复用后台管理员鉴权与同源要求，JSON仅接受 {"nodeId":"已同步有效节点id"}。返回 nodeId、kind=tcp-connect、source=account-do、samples（latencyMs/error）、successCount、medianMs；三次TCP连接样本，失败latencyMs为null。每次3秒连接超时，调用间隔至少10秒，同组操作并发409。仅连接验证过的公网代理地址；无认证/HTTP传输，不切换或保存节点，不等同Codex或模型延迟。旧Worker无测量依赖时501，Node不支持此扩展。主应用已部署该接口，独立诊断Worker的接口/认证不同，见WEBSHARE-LATENCY-001。
-## 多账号管理（MULTI-ACCOUNT-001，待发布）
+## 多账号管理（MULTI-ACCOUNT-001，v0.2.0-dev.6已发布）
 
 管理员登录后使用以下同源管理接口；API调用key没有管理权限。沿用已有Cookie/Access/Bearer与CSRF/JSON边界。
 
