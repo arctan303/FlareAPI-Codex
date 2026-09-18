@@ -35,6 +35,9 @@ export interface AccountServiceConfig {
   ONEAPI_RELAY_KEY?: string;
   ONEAPI_WS_DIAGNOSTIC?: string;
   ACCOUNT_IMPORT_SECRET?: string;
+  PUBLIC_ORIGIN?: string;
+  WORKER_ORIGIN?: string;
+  LAN_ORIGINS?: string;
 }
 
 export interface AccountServiceOptions {
@@ -66,6 +69,7 @@ export interface GatewayHandlers {
   cancelLease?(leaseId: string): Promise<void>;
   allowInternalControl?: boolean;
   allowLoopbackWithoutPeer?: boolean;
+  getDynamicOrigins?: () => Iterable<string> | Set<string> | readonly string[];
   log?(entry: { requestId: string; path: string; method: string; status: number; durationMs: number }): void;
 }
 

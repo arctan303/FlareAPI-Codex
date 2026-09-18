@@ -34,15 +34,31 @@ function requestAccess(
   url: URL,
   env: GatewayConfig,
   context: GatewayRequestContext,
-  allowLoopbackWithoutPeer: boolean
+  allowLoopbackWithoutPeer: boolean,
+  dynamicOrigins?: Iterable<string> | Set<string> | readonly string[]
 ): { allowed: boolean; trustedLanHttp: boolean } {
   if (isLoopbackHost(url.hostname)) {
     return { allowed: allowLoopbackWithoutPeer || isLoopbackAddress(context.remoteAddress), trustedLanHttp: false };
   }
   const publicOrigin = configuredOrigin(env.PUBLIC_ORIGIN, "PUBLIC_ORIGIN");
   const workerOrigin = configuredOrigin(env.WORKER_ORIGIN, "WORKER_ORIGIN");
-  if (url.protocol === "https:" && (url.origin === publicOrigin || url.origin === workerOrigin)) {
-    return { allowed: true, trustedLanHttp: false };
+  if (url.protocol === "https:") {
+    if (url.origin === publicOrigin || url.origin === workerOrigin) {
+      return { allowed: true, trustedLanHttp: false };
+    }
+    if (dynamicOrigins) {
+      if (dynamicOrigins instanceof Set) {
+        if (dynamicOrigins.has(url.origin)) {
+          return { allowed: true, trustedLanHttp: false };
+        }
+      } else {
+        for (const origin of dynamicOrigins) {
+          if (url.origin === origin) {
+            return { allowed: true, trustedLanHttp: false };
+          }
+        }
+      }
+    }
   }
   const lanOrigins = parseLanOrigins(env.LAN_ORIGINS);
   const trustedLan = lanOrigins.includes(url.origin) && isTrustedLanPeer(context.remoteAddress);
@@ -152,7 +168,7 @@ export async function handleGatewayRequest(
       if (internalGroupControl) {
         response = secureHeaders(await handlers.accountFetch(request), true);
       } else {
-        const access = requestAccess(url, env, context, handlers.allowLoopbackWithoutPeer === true);
+        const access = requestAccess(url, env, context, handlers.allowLoopbackWithoutPeer === true, handlers.getDynamicOrigins?.());
         if (env.ALLOW_TEST_HOSTS !== "true" && !access.allowed) {
           throw new GatewayError(403, "host_not_allowed", "请求 Host 未列入允许的 origin。", undefined, "permission_error");
         }

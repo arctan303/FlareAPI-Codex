@@ -178,6 +178,7 @@ function showLogin(message = "", navigate = true) {
   $("key-edit-form").reset();
   if ($("key-edit-dialog").open) $("key-edit-dialog").close();
   clearAccessConfig();
+  clearNetworkOrigins();
   clearWebshareSettings();
   $("device-panel").classList.add("hidden");
   $("verification-link").removeAttribute("href");
@@ -216,7 +217,7 @@ async function login(event) {
     if (epoch !== uiEpoch) return;
     $("admin-password").value = "";
     if (showAuthenticated(session.expiresAt, session)) return;
-    await Promise.all([checkStatus(), loadApiKeys(), loadLogSettings(), loadAccessConfig(), loadWebshareSettings()]);
+    await Promise.all([checkStatus(), loadApiKeys(), loadLogSettings(), loadAccessConfig(), loadNetworkOrigins(), loadWebshareSettings()]);
   } catch (error) {
     if (epoch !== uiEpoch) return;
     $("admin-password").value = "";
@@ -508,6 +509,7 @@ async function copyText(text, messageId) {
 
 $("login-form").addEventListener("submit", login);
 $("access-form").addEventListener("submit", saveAccessConfig);
+$("custom-origin-form")?.addEventListener("submit", addCustomOrigin);
 $("logout-button").addEventListener("click", logout);
 $("status-button").addEventListener("click", checkStatus);
 $("connect-button").addEventListener("click", startDeviceLogin);
@@ -975,6 +977,168 @@ async function saveAccessConfig(event) {
     if (epoch === uiEpoch && requestToken === accessSaveToken) button.disabled = false;
   }
 }
+
+let networkOriginsRequestToken = 0;
+let networkOriginsSaveToken = 0;
+let currentCustomOrigins = [];
+
+function renderNetworkOrigins(data) {
+  const defaultOrigins = Array.isArray(data?.defaultOrigins) ? data.defaultOrigins : [];
+  const customOrigins = Array.isArray(data?.customOrigins) ? data.customOrigins : [];
+  currentCustomOrigins = [...customOrigins];
+
+  setBadge("network-origins-count", `${customOrigins.length} 个自定义域名`);
+
+  const defaultList = $("default-origins-list");
+  if (defaultList) {
+    defaultList.replaceChildren();
+    if (defaultOrigins.length === 0) {
+      const empty = document.createElement("span");
+      empty.className = "muted";
+      empty.style.fontSize = "13px";
+      empty.textContent = "无系统内置域名";
+      defaultList.append(empty);
+    } else {
+      for (const origin of defaultOrigins) {
+        const badge = document.createElement("span");
+        badge.className = "badge";
+        badge.style.background = "var(--soft)";
+        badge.textContent = origin;
+        defaultList.append(badge);
+      }
+    }
+  }
+
+  const customList = $("custom-origins-list");
+  if (customList) {
+    customList.replaceChildren();
+    if (customOrigins.length === 0) {
+      const empty = document.createElement("p");
+      empty.className = "muted";
+      empty.style.margin = "6px 0";
+      empty.textContent = "暂无自定义域名。";
+      customList.append(empty);
+    } else {
+      for (const origin of customOrigins) {
+        const row = document.createElement("div");
+        row.className = "key-row";
+
+        const detail = document.createElement("div");
+        detail.className = "key-detail";
+        const strong = document.createElement("strong");
+        strong.textContent = origin;
+        detail.append(strong);
+
+        const actions = document.createElement("div");
+        actions.className = "key-actions";
+        const removeBtn = document.createElement("button");
+        removeBtn.type = "button";
+        removeBtn.className = "secondary";
+        removeBtn.textContent = "移除";
+        removeBtn.addEventListener("click", () => removeCustomOrigin(origin));
+        actions.append(removeBtn);
+
+        row.append(detail, actions);
+        customList.append(row);
+      }
+    }
+  }
+}
+
+function clearNetworkOrigins() {
+  networkOriginsRequestToken += 1;
+  currentCustomOrigins = [];
+  setBadge("network-origins-count", "未读取");
+  $("default-origins-list")?.replaceChildren();
+  $("custom-origins-list")?.replaceChildren();
+  if ($("new-origin-input")) $("new-origin-input").value = "";
+  setMessage("network-origins-message", "");
+}
+
+async function loadNetworkOrigins() {
+  const epoch = uiEpoch;
+  const requestToken = ++networkOriginsRequestToken;
+  try {
+    const data = await (await adminCall("/admin/network/origins")).json();
+    if (epoch !== uiEpoch || requestToken !== networkOriginsRequestToken) return;
+    renderNetworkOrigins(data);
+    setMessage("network-origins-message", "");
+  } catch (error) {
+    if (epoch === uiEpoch && requestToken === networkOriginsRequestToken) {
+      setMessage("network-origins-message", error.message, "error");
+    }
+  }
+}
+
+async function saveCustomOrigins(newOrigins, successMessage) {
+  const epoch = uiEpoch;
+  const requestToken = ++networkOriginsSaveToken;
+  networkOriginsRequestToken += 1;
+  const button = $("add-origin-button");
+  if (button) button.disabled = true;
+  setMessage("network-origins-message", "正在保存…");
+  try {
+    const data = await (await adminCall("/admin/network/origins", {
+      method: "POST",
+      body: JSON.stringify({ origins: newOrigins })
+    })).json();
+    if (epoch !== uiEpoch || requestToken !== networkOriginsSaveToken) return;
+    if (Array.isArray(data?.customOrigins)) {
+      currentCustomOrigins = [...data.customOrigins];
+      await loadNetworkOrigins();
+    }
+    if ($("new-origin-input")) $("new-origin-input").value = "";
+    setMessage("network-origins-message", successMessage);
+  } catch (error) {
+    if (epoch === uiEpoch && requestToken === networkOriginsSaveToken) {
+      setMessage("network-origins-message", error.message, "error");
+    }
+  } finally {
+    if (epoch === uiEpoch && requestToken === networkOriginsSaveToken && button) {
+      button.disabled = false;
+    }
+  }
+}
+
+async function addCustomOrigin(event) {
+  event.preventDefault();
+  const rawInput = value("new-origin-input");
+  if (!rawInput) {
+    setMessage("network-origins-message", "请输入有效的 HTTPS 域名。", "error");
+    return;
+  }
+  let parsed;
+  try {
+    parsed = new URL(rawInput);
+  } catch {
+    setMessage("network-origins-message", "域名格式无效，请输入有效 URL（例如：https://api.arcinks.com）。", "error");
+    return;
+  }
+  if (
+    parsed.protocol !== "https:" ||
+    parsed.username ||
+    parsed.password ||
+    parsed.port ||
+    (parsed.pathname !== "" && parsed.pathname !== "/") ||
+    parsed.search ||
+    parsed.hash
+  ) {
+    setMessage("network-origins-message", "域名必须是无路径、端口、查询或凭据的 HTTPS origin（例如 https://api.arcinks.com）。", "error");
+    return;
+  }
+  const normalized = parsed.origin;
+  if (currentCustomOrigins.includes(normalized)) {
+    setMessage("network-origins-message", "该域名已在允许列表中。", "error");
+    return;
+  }
+  await saveCustomOrigins([...currentCustomOrigins, normalized], `域名 ${normalized} 已成功添加。`);
+}
+
+async function removeCustomOrigin(originToRemove) {
+  const nextList = currentCustomOrigins.filter((o) => o !== originToRemove);
+  await saveCustomOrigins(nextList, `域名 ${originToRemove} 已移除。`);
+}
+
 async function restoreSession() {
   const epoch = uiEpoch; $("base-url").textContent = location.origin + "/v1";
   try {
@@ -982,7 +1146,7 @@ async function restoreSession() {
     if (epoch !== uiEpoch) return;
     if (!session.authenticated) return showLogin();
     if (showAuthenticated(session.expiresAt, session)) return;
-    await Promise.all([checkStatus(), loadApiKeys(), loadLogSettings(), loadAccessConfig(), loadWebshareSettings()]);
+    await Promise.all([checkStatus(), loadApiKeys(), loadLogSettings(), loadAccessConfig(), loadNetworkOrigins(), loadWebshareSettings()]);
   } catch (error) { if (epoch === uiEpoch) showLogin(error.message); }
 }
 let webshareRequestToken = 0;
@@ -994,7 +1158,7 @@ function clearWebshareSettings() {
   $("webshare-node").disabled = false;
   $("webshare-api-key").value = ""; $("webshare-plan-id").value = ""; $("webshare-node").replaceChildren();
   $("webshare-section").classList.add("hidden");
-  $("network-section").classList.remove("hidden");
+  $("network-node-help")?.classList.remove("hidden");
   $("settings-content").classList.add("hidden");
   $("settings-loading").classList.remove("hidden");
   ["webshare-message", "webshare-active", "webshare-synced"].forEach(id => { $(id).textContent = ""; });
@@ -1025,7 +1189,7 @@ async function loadWebshareSettings() {
     const config = await (await adminCall("/admin/webshare")).json();
     if (epoch !== uiEpoch || token !== webshareRequestToken) return;
     renderWebshareSettings(config);
-    $("network-section").classList.add("hidden");
+    $("network-node-help")?.classList.add("hidden");
   } catch (error) {
     if (epoch !== uiEpoch || token !== webshareRequestToken) return;
     if (error.status === 404) $("webshare-section").classList.add("hidden");

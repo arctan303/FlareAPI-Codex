@@ -62,7 +62,9 @@ export async function createServerRuntime(options: ServerRuntimeOptions): Promis
   const account = new AccountService(storage, {
     ADMIN_API_KEY: options.config.ADMIN_API_KEY,
     GATEWAY_API_KEY: options.config.GATEWAY_API_KEY,
-    TOKEN_ENCRYPTION_KEY: options.config.TOKEN_ENCRYPTION_KEY
+    TOKEN_ENCRYPTION_KEY: options.config.TOKEN_ENCRYPTION_KEY,
+    PUBLIC_ORIGIN: options.config.PUBLIC_ORIGIN,
+    LAN_ORIGINS: options.config.LAN_ORIGINS
   }, { outboundFetch: outbound });
   const staticHandlerPromise = createStaticHandler(options.publicDir);
   let staticHandler: (request: Request) => Promise<Response>;
@@ -113,6 +115,7 @@ export async function createServerRuntime(options: ServerRuntimeOptions): Promis
             headers: { Authorization: `Bearer ${options.config.TOKEN_ENCRYPTION_KEY}` }
           }));
         },
+        getDynamicOrigins: () => account.getDynamicOrigins(),
         log: logger
       }, context);
     },

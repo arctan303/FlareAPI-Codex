@@ -378,20 +378,20 @@ describe("Phase-01 account usage, per-key controls, and request logs", () => {
     expect(limited.status).toBe(429);
     expect((await limited.json() as any).error.code).toBe("api_key_rate_limit");
     expect(mockUpstreamStats().codexRequests - beforeRate).toBe(1);
-    await runInDurableObject(accountStub(), async (_instance, state) => {
-      const windows = await state.storage.get<Record<string, { windowStart: number; count: number }>>("api-key-rate-windows");
-      expect(windows?.[rateKey.id]).toMatchObject({ count: 1 });
-      expect(Array.isArray(windows?.[rateKey.id])).toBe(false);
-      expect(JSON.stringify(windows).length).toBeLessThan(4096);
+    await runInDurableObject(accountStub(), async (instance, state) => {
+      expect(await state.storage.get("api-key-rate-windows")).toBeUndefined();
+      const window = (instance as any).service.getRateWindow(rateKey.id);
+      expect(window).toHaveLength(1);
     });
     expect((await SELF.fetch(`${origin}/admin/api-keys/${rateKey.id}`, {
       method: "DELETE",
       headers: auth(admin),
       body: "{}"
     })).status).toBe(204);
-    await runInDurableObject(accountStub(), async (_instance, state) => {
-      const windows = await state.storage.get<Record<string, unknown>>("api-key-rate-windows");
-      expect(windows?.[rateKey.id]).toBeUndefined();
+    await runInDurableObject(accountStub(), async (instance, state) => {
+      expect(await state.storage.get("api-key-rate-windows")).toBeUndefined();
+      const window = (instance as any).service.getRateWindow(rateKey.id);
+      expect(window).toBeUndefined();
     });
 
     const concurrent = await createKey("single concurrency", { concurrencyLimit: 1 });

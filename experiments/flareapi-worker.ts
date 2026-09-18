@@ -50,7 +50,8 @@ export class WebshareAccount extends DurableObject<FlareEnv> {
         }));
       },
       allowInternalControl: false,
-      allowLoopbackWithoutPeer: true
+      allowLoopbackWithoutPeer: true,
+      getDynamicOrigins: () => this.service.getDynamicOrigins()
     });
   }
   alarm(): Promise<void> { return this.service.alarm(); }
