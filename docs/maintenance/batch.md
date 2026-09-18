@@ -1,3 +1,9 @@
 # 维护待复查队列
 
-当前无待复查项。最近回执：[RELEASE-004](../verification/RELEASE-004-review.md)。
+最近已关闭批次：[RELEASE-004](../verification/RELEASE-004-review.md)。
+
+| ID | 范围与结果 | 证据 | 状态 |
+| --- | --- | --- | --- |
+| LOCAL-MARKER-002 | 本地8787启动与有界来源头诊断；正常目录200，仅增加CF-Worker后403；账号准备刷新1次，正式对照无刷新/重试；8789/3000保持不变 | [任务与真实结果](LOCAL-MARKER-002.md)，既有诊断检查4/4 | 待复查 |
+
+| GIT-PUBLISH-001 | 原TLS锁文件与可复现准备入口入库，隔离空目录安装/补丁校验及Worker dry-run通过；远端切换/推送结果见任务 | [任务与证据](GIT-PUBLISH-001.md) | 待复查 |

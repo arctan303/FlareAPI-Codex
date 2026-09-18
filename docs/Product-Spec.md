@@ -1,4 +1,4 @@
-# Product Spec：OneAPI 轻量个人 Codex 网关
+# Product Spec：FlareAPI 轻量个人 Codex 网关
 
 版本：本地扩展（v0.1.0 之后）；日期：2026-09-07。原版 LIVE-001 已通过；Phase-01 本地扩展已完成，真实两协议/显式思考程度/官方额度/后台操作通过，fresh R2 独立复核通过。证据见 PHASE-01；Phase-02已部署oneapi/api.arcinks.com，管理端可用；云端重新授权后模型目录/额度仍403，端到端验收受阻。
 
@@ -152,3 +152,27 @@ REQ-14 / AC-14：部署到新 oneapi Worker 并绑定 api.arcinks.com；域名�
 登录页采用居中紧凑表单和一致字号层级；后台分为概览、账号连接、模型测试、API 密钥、调用日志、设置，hash 导航支持刷新与前后退，小屏可正常使用。切页保留编辑和流状态、不增加上游请求；退出清除敏感状态；key 可进入筛选后的调用日志。视觉与交互以 [Design-Brief](Design-Brief.md) 为准。已完成本地实施、桌面/手机验收与独立复核；已纳入 v0.2.0-dev.2 发布范围，发布结果见 [RELEASE-003](verification/RELEASE-003.md)。
 
 启动参数补充（用户随后明确）：支持 --host、--port、--lan、--public-origin、--help；启动参数覆盖环境配置，只影响本次进程，不修改文件。--lan 根据具体私网绑定 IP 或通配绑定时本机当前网卡的 RFC1918/ULA 地址生成精确 LAN_ORIGINS，启动输出可访问地址；不接受任意 Host。命令行参数校验先于打开数据库。公网直连使用 HTTPS 终止反代，Cloudflare Tunnel 与传统反代均为支持的安装拓扑，不要求使用 Cloudflare。
+
+
+AC-19增量（CONSOLE-TIDY-001，2026-09-18）：保留六区与草稿，设置页分组并保留反馈空间，异步配置读取避免插入卡片推移已显示控件；Worker隐藏不适用的本机启动指引，Node仍保留。桌面/390px布局、提示与刷新稳定性按[短任务](tasks/CONSOLE-TIDY-001.md)验收。本轮不改变REQ-21接口、账号及代理规则。
+## REQ-20 / AC-20：独立 Webshare Worker 实例
+
+用户2026-09-18要求可使用的线上Worker，并明确限制其他产品不受影响。在新 oneapi-webshare-test 实例复用完整后台与API，通过固定Webshare静态住宅代理和严格JS TLS提供账号授权、模型及生成。只给此实例新建独立密钥/SQLite DO；不复制现有可轮换refresh token，官方设备授权建立独立凭据。Node主交付方向保留，不覆盖历史或已有产品。验收必须区分后台可访问、模型成功及实际生成，不能以health200代替上游完成；细节与状态见 [WORKER-WEBSHARE-002](tasks/WORKER-WEBSHARE-002.md)。
+
+AC-20验收状态（2026-09-18）：独立R2审查及真实完整实例部署通过；用户完成新设备授权后，/v1/models200，gpt-5.5 Responses普通生成和Chat流式生成均成功返回WORKER_OK。临时测试key/session已清理，原7产品及域名相对本轮实际写入前基线无改动；不将此前外部并发变化冒认本任务结果，不扩展为所有模型/长期稳定性。独立账号、代理及专属DO保留供用户使用，详细版本/证据见WORKER-WEBSHARE-002。
+
+## REQ-21 / AC-21：Webshare 后台节点配置（独立Worker已上线）
+
+在已授权独立Worker内配置Webshare API key及可选Plan ID，通过官方API同步固定住宅节点，免重新导入下载链接。管理员选择节点，连通测试通过才启用；不轮换/不自动切换，同步失败或节点消失保留当前出口快照，关闭才改直连。秘密加密保存、配置API不回显；保留当前PROXY_CONFIG bootstrap、现有账号和其他产品。临时范围为当前Worker优先，Node接入待用户范围回复；验收及风险见 [WEBSHARE-SETTINGS-001](tasks/WEBSHARE-SETTINGS-001.md)。这把REQ20的固定Secret配置扩展为后台可配置，同样保留Node主交付方向，不撤销已验证TLS及两种生成结果。
+
+
+REQ21当前状态：独立R2审查及固定实例限定上线完成。新设置API200/匿名401、不回显秘密；旧账号/住宅出口保持，模型200及两种gpt-5.5文本生成发布后回归通过。真实Webshare列表与选节点切换尚待用户后台填写其APIkey验证；不将fixture或原住宅回归当作新APIkey真实同步证据。
+
+## REQ-22 / AC-22：FlareAPI 改名与独立新实例
+
+用户明确要求项目显示名称和包名称改为FlareAPI，新建名为flareapi的Worker，随机管理员口令通过ADMIN_API_KEY Secret注入并交付。后续本地契约按FLAREAPI-CONFIG-001修订：只需ADMIN_API_KEY，内部密钥自动持久初始化，无默认代理，后台输入Webshare key获取/选择启用；后续用户明确授权按FLAREAPI-RELEASE-002发布到既有flareapi并清理多余变量；已发布为单ADMIN版本，原多余变量清理完成。独立存储、独立新密钥，不复制旧账号，保留全部现有在线产品；既有协议标识和历史发布链接兼容保留。按[FLAREAPI-001](tasks/FLAREAPI-001.md)验证品牌、登录、配置、产物秘密审计与资源隔离，模型生成须新账号授权后才能验收。本条承接当前Webshare Worker能力，不撤销Node兼容入口或旧实例历史。
+REQ-22单配置验收详见[FLAREAPI-CONFIG-001](tasks/FLAREAPI-CONFIG-001.md)，停用环境GATEWAY_API_KEY，凭据持久密钥独立于口令，Host/同源校验保留。REQ-21保留bootstrap规则仅继续适用于原实验实例；FlareAPI本地已撤销默认代理，填key/同步也不自动启用。
+
+## REQ-23 / AC-23：Worker 到 Webshare 的独立测速（本地完成、独立诊断已实测）
+
+用户明确测速方向是Worker到Webshare。在账号DO内对手选、已同步有效节点进行3次有界TCP连接测速，给成功样本中位数与成功次数；不请求Codex、不传认证、不开启/切换当前出口。后台独立测速按钮，不将连通测试或本机延迟冒认为DO延迟。仅复用现有管理员鉴权、同源与公网节点校验；详细限制和验收见 [WEBSHARE-LATENCY-001](tasks/WEBSHARE-LATENCY-001.md)。用户后续授权部署独立测速Worker，flareapi-latency-test已在SIN实测三节点174/175/234ms，各3/3成功；后台能力本地完成，用户后续授权按FLAREAPI-RELEASE-002更新主FlareAPI并清理变量，发布/原密钥持久迁移/鉴权与资产验收通过。诊断边缘结果不当作现有账号DO或其他地区结果；REQ21/22代理启用规则保持。

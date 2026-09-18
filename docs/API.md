@@ -140,3 +140,7 @@ ping只验证加密中转身份；models/usage各用同一枚云端access token�
 ## 管理页面路由（ACCESS-ENTRY-001）
 
 GET/HEAD /固定跳转/admin/login。GET /admin/login和GET /admin/仅提供无账号数据的静态页面，登录状态通过受保护管理接口确认；前者已认证则进入/admin/，后者未认证则返回/admin/login。合法导航hash保留，不使用任意redirect参数。CF保护/admin/*时整页访问先完成CF登录；没有CF保护时使用普通口令表单。静态页面导航例外不扩展到管理数据接口。
+
+## FlareAPI Worker 后台 TCP 测速（已上线）
+
+POST /admin/webshare/measure，复用后台管理员鉴权与同源要求，JSON仅接受 {"nodeId":"已同步有效节点id"}。返回 nodeId、kind=tcp-connect、source=account-do、samples（latencyMs/error）、successCount、medianMs；三次TCP连接样本，失败latencyMs为null。每次3秒连接超时，调用间隔至少10秒，同组操作并发409。仅连接验证过的公网代理地址；无认证/HTTP传输，不切换或保存节点，不等同Codex或模型延迟。旧Worker无测量依赖时501，Node不支持此扩展。主应用已部署该接口，独立诊断Worker的接口/认证不同，见WEBSHARE-LATENCY-001。

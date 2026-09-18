@@ -1,0 +1,20 @@
+{
+  "name": "flareapi-latency-test",
+  "account_id": "ed6c2f7b12e4f0659cf8b70077fa649b",
+  "main": "experiments/webshare-latency-worker.ts",
+  "compatibility_date": "2026-09-06",
+  "routes": [],
+  "workers_dev": true,
+  "preview_urls": false,
+  "observability": {
+    "enabled": false
+  },
+  "define": {
+    "PROBE_DEADLINE": "1789714362846"
+  },
+  "secrets": {
+    "required": [
+      "PROBE_KEY"
+    ]
+  }
+}

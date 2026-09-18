@@ -2140,6 +2140,10 @@ export class AccountService {
         throw new GatewayError(404, "not_found", "接口不存在。", undefined, "invalid_request_error");
       }
 
+      if (adminAuthentication && this.options.adminExtension) {
+        const extension = await this.options.adminExtension(request);
+        if (extension) return extension;
+      }
       if (request.method === "GET" && url.pathname === "/admin/status") return this.status();
       if (request.method === "GET" && url.pathname === "/admin/access") return await this.getAccessConfig();
       if (request.method === "PATCH" && url.pathname === "/admin/access") return await this.patchAccessConfig(request);

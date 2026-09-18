@@ -1,10 +1,11 @@
 {
-  "name": "oneapi",
+  "name": "flareapi",
   "version": "0.2.0-dev.4",
   "private": true,
   "type": "module",
   "scripts": {
     "setup": "node scripts/setup.mjs",
+    "worker:tls:prepare": "node scripts/prepare-flareapi-tls.mjs",
     "dev": "wrangler dev --config wrangler.jsonc",
     "dev:ui": "vite --config vite.config.mjs",
     "dev:node": "node scripts/dev-local.mjs",

@@ -18,7 +18,7 @@ function targetFromArgs(argv) {
 function generatedEnv() {
   const key = () => randomBytes(32).toString('base64url');
   return [
-    '# OneAPI Node server environment. Keep this file mode 0600.',
+    '# FlareAPI Node server environment. Keep this file mode 0600.',
     'HOST=127.0.0.1',
     'PORT=8787',
     'DATA_DIR=./data',

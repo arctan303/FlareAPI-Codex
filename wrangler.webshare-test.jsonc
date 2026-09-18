@@ -1,0 +1,50 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "oneapi-webshare-test",
+  "main": "experiments/oneapi-webshare-worker.ts",
+  "compatibility_date": "2026-09-06",
+  "account_id": "ed6c2f7b12e4f0659cf8b70077fa649b",
+  "workers_dev": true,
+  "preview_urls": false,
+  "routes": [],
+  "observability": {
+    "enabled": false
+  },
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": true
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "ACCOUNT",
+        "class_name": "WebshareAccount"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "webshare-v1",
+      "new_sqlite_classes": [
+        "WebshareAccount"
+      ]
+    }
+  ],
+  "vars": {
+    "PUBLIC_ORIGIN": "https://oneapi-webshare-test.12213443th.workers.dev",
+    "WORKER_ORIGIN": "https://oneapi-webshare-test.12213443th.workers.dev",
+    "ONEAPI_INSTANCE_KEYS_SHA256": "7c409705f43fc21a026f33c93004f7b46d28da907894c519930d6cf7e40a1634"
+  },
+  "secrets": {
+    "required": [
+      "ADMIN_API_KEY",
+      "GATEWAY_API_KEY",
+      "TOKEN_ENCRYPTION_KEY",
+      "PROXY_CONFIG"
+    ]
+  }
+}

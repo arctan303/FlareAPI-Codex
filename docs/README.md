@@ -1,4 +1,4 @@
-# OneAPI 使用说明
+# FlareAPI 使用说明
 
 更新时间：2026-09-08。当前产品主路径是轻量单服务器：Node.js 24.x（至少 24.15）、一个生产 bundle、一个 Node 进程和一个业务 SQLite 文件。dev.4 已在本机用真实账号跑通 Codex 0.153.4 模型目录、文本、只读工具续轮与未知字段兼容，并完成桌面/390px 后台验收、fresh R2 审查和 GitHub prerelease/附件回下载校验；发布状态见 [RELEASE-005](verification/RELEASE-005.md)。用户已有远端 Node 安装，本次不会自动升级或部署。
 
@@ -63,3 +63,23 @@ Cloudflare Access 的两个应用参数是 Team Domain 和 Application AUD。One
 Git 归档目标仍为 arctan303/OneAPI，第一版为 v0.1.0；归档细节见 [ARCHIVE-001](verification/ARCHIVE-001.md)。
 
 历史文档可能包含旧的 api.arcinks.com、Worker 版本、临时诊断和本地环境信息。它们不表示当前新服务器已部署或上游已通过；不要据此推导性能、稳定性或纯 Worker 可用性。
+
+## 独立住宅代理 Worker 实验（2026-09-18）
+
+用户授权的新完整实例已部署：[测试后台](https://oneapi-webshare-test.12213443th.workers.dev/admin/login)，API Base为该origin下/v1。只操作独立oneapi-webshare-test及其自身WebshareAccount SQLite DO，未修改其他产品/自定义域名；Node默认交付方向保留。已通过新独立官方账号授权：完整后台登录、真实模型目录200、gpt-5.5 Responses普通与Chat流式生成均返回WORKER_OK；不扩写为其他模型或长期稳定性。账号/密钥不复制原实例，详细当前状态、证据与恢复动作见 [WORKER-WEBSHARE-002](tasks/WORKER-WEBSHARE-002.md)。
+
+测试Worker后台现支持“设置 → Webshare固定住宅代理”：保存APIkey及可选PlanID、同步节点、测试启用固定节点、关闭代理。APIkey/节点密码加密保存不回显，刷新保留当前出口；当前原住宅bootstrap及独立账号保持可用，新真实API列表须用户在后台填写key后验收。此功能本轮仅接该实验Worker，详见[WEBSHARE-SETTINGS-001](tasks/WEBSHARE-SETTINGS-001.md)。
+
+后台局部整理已更新独立测试Worker，当前版本924185f9-3927-4820-8e41-39eab9931e3f：设置常驻说明已按用户纠正删除，保留字段/状态/反馈；设置分组、反馈占位与手机导航稳定；桌面/390px保存刷新位移0px，三项线上资产回读一致，原7产品资源不变。详见[CONSOLE-TIDY-001](tasks/CONSOLE-TIDY-001.md)。
+
+## FlareAPI Worker（2026-09-18）
+
+当前后台 https://flareapi.12213443th.workers.dev/admin/login ，API Base为 https://flareapi.12213443th.workers.dev/v1 。版本 b72a7840-7d5f-4fb8-8325-5900ee7e9176，100%发布，已上线单密码与后台独立测速。
+
+仅 ADMIN_API_KEY 登录密钥；ACCOUNT/ASSETS 为必要平台绑定。内部加密密钥保存于原专属DO，已用原密钥完成持久迁移并验证删除TOKEN后可读取。GATEWAY_API_KEY、PROXY_CONFIG、TOKEN_ENCRYPTION_KEY Secret及ONEAPI_INSTANCE_KEYS_SHA256、PUBLIC_ORIGIN、WORKER_ORIGIN普通变量已清理。登录密钥保持原值，保存于ignore .env.worker-flareapi.json；原秘密ignore .env.worker-flareapi.legacy.json供恢复，不再作为当前必填配置。
+
+首次没有默认代理：设置→填Webshare API key→刷新节点列表→手选节点→测速/测试并启用。测速在账号DO内进行三次TCP连接建立测量，显示中位数和成功次数；不请求Codex、不切换出口。保存key、同步也不自动启用。无节点或关闭代理后停止上游调用；第三方调用使用后台创建的APIkey。目前账号未连接、节点0；用户配置代理后连接自己的Codex账号。Node与原测试Worker兼容入口保留。
+
+scripts/deploy-flareapi.mjs只做本地审计；scripts/release-flareapi.mjs是原多变量版本的一次性受控迁移发布，已完成不重复执行其旧状态预检。详细鉴权/资产/变量/资源隔离回读见 [FLAREAPI-RELEASE-002](tasks/FLAREAPI-RELEASE-002.md)，单配置契约见 [FLAREAPI-CONFIG-001](tasks/FLAREAPI-CONFIG-001.md)。其他9个现有Worker、域名、DO相对实际发布前基线未改动。
+
+另有独立限时诊断Worker flareapi-latency-test，SIN实测三节点174/175/234ms；这组结果仅该边缘位置，不冒认为本账号DO的实测。该诊断实例不是后台，详见 [WEBSHARE-LATENCY-001](tasks/WEBSHARE-LATENCY-001.md)。

@@ -38,6 +38,7 @@ export interface AccountServiceConfig {
 }
 
 export interface AccountServiceOptions {
+  adminExtension?: (request: Request) => Promise<Response | null>;
   outboundFetch?: (request: Request, requestGroupId?: string) => Promise<Response>;
 }
 

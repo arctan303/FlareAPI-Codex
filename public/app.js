@@ -26,6 +26,15 @@ function routeFromHash() {
     return null;
   }
 }
+function keepActiveNavigationVisible() {
+  const nav = document.querySelector(".console-nav");
+  const link = nav?.querySelector('[aria-current="page"]');
+  if (!link || nav.scrollWidth <= nav.clientWidth) return;
+  const bounds = nav.getBoundingClientRect(), item = link.getBoundingClientRect();
+  if (item.left < bounds.left) nav.scrollLeft += item.left - bounds.left;
+  else if (item.right > bounds.right) nav.scrollLeft += item.right - bounds.right;
+}
+window.addEventListener("resize", () => requestAnimationFrame(keepActiveNavigationVisible));
 function renderRoute({ focus = true } = {}) {
   let route = routeFromHash();
   if (!route) {
@@ -39,13 +48,18 @@ function renderRoute({ focus = true } = {}) {
     if (link.dataset.routeLink === route) link.setAttribute("aria-current", "page");
     else link.removeAttribute("aria-current");
   });
+  requestAnimationFrame(keepActiveNavigationVisible);
   const routeChanged = activeRoute !== route;
   activeRoute = route;
   const authenticated = !$("console").classList.contains("hidden");
   if (routeChanged && route === "logs" && authenticated) void loadLogs();
   if (focus && authenticated) {
     const heading = document.querySelector(`[data-route-page="${route}"] h1`);
-    requestAnimationFrame(() => heading?.focus());
+    requestAnimationFrame(() => {
+      if (activeRoute !== route) return;
+      if (routeChanged) window.scrollTo({ top: 0, behavior: "instant" });
+      heading?.focus({ preventScroll: true });
+    });
   }
 }
 function navigateTo(route) {
@@ -164,6 +178,7 @@ function showLogin(message = "", navigate = true) {
   $("key-edit-form").reset();
   if ($("key-edit-dialog").open) $("key-edit-dialog").close();
   clearAccessConfig();
+  clearWebshareSettings();
   $("device-panel").classList.add("hidden");
   $("verification-link").removeAttribute("href");
   $("verification-link").textContent = "";
@@ -201,7 +216,7 @@ async function login(event) {
     if (epoch !== uiEpoch) return;
     $("admin-password").value = "";
     if (showAuthenticated(session.expiresAt, session)) return;
-    await Promise.all([checkStatus(), loadApiKeys(), loadLogSettings(), loadAccessConfig()]);
+    await Promise.all([checkStatus(), loadApiKeys(), loadLogSettings(), loadAccessConfig(), loadWebshareSettings()]);
   } catch (error) {
     if (epoch !== uiEpoch) return;
     $("admin-password").value = "";
@@ -933,7 +948,7 @@ async function loadAccessConfig() {
     const body = await (await adminCall("/admin/access")).json();
     if (epoch !== uiEpoch || requestToken !== accessConfigRequestToken) return;
     renderAccessConfig(body);
-    setMessage("access-message", body?.updatedAt ? "上次更新：" + fmtTime(body.updatedAt) : "配置已读取。");
+    setMessage("access-message", "");
   } catch (error) {
     if (epoch === uiEpoch && requestToken === accessConfigRequestToken) setMessage("access-message", error.message);
   }
@@ -953,7 +968,7 @@ async function saveAccessConfig(event) {
     })).json();
     if (epoch !== uiEpoch || requestToken !== accessSaveToken) return;
     renderAccessConfig(body);
-    setMessage("access-message", body?.updatedAt ? "已保存：" + fmtTime(body.updatedAt) : "Access 配置已保存。");
+    setMessage("access-message", "已保存。");
   } catch (error) {
     if (epoch === uiEpoch && requestToken === accessSaveToken) setMessage("access-message", error.message);
   } finally {
@@ -967,9 +982,105 @@ async function restoreSession() {
     if (epoch !== uiEpoch) return;
     if (!session.authenticated) return showLogin();
     if (showAuthenticated(session.expiresAt, session)) return;
-    await Promise.all([checkStatus(), loadApiKeys(), loadLogSettings(), loadAccessConfig()]);
+    await Promise.all([checkStatus(), loadApiKeys(), loadLogSettings(), loadAccessConfig(), loadWebshareSettings()]);
   } catch (error) { if (epoch === uiEpoch) showLogin(error.message); }
 }
+let webshareRequestToken = 0;
+let webshareBusy = false;
+const webshareLatencies = new Map();
+const webshareButtons = ["webshare-measure-button", "webshare-save-button", "webshare-sync-button", "webshare-apply-button", "webshare-disable-button"];
+function clearWebshareSettings() {
+  webshareRequestToken += 1; webshareBusy = false; webshareLatencies.clear();
+  $("webshare-node").disabled = false;
+  $("webshare-api-key").value = ""; $("webshare-plan-id").value = ""; $("webshare-node").replaceChildren();
+  $("webshare-section").classList.add("hidden");
+  $("network-section").classList.remove("hidden");
+  $("settings-content").classList.add("hidden");
+  $("settings-loading").classList.remove("hidden");
+  ["webshare-message", "webshare-active", "webshare-synced"].forEach(id => { $(id).textContent = ""; });
+  webshareButtons.forEach(id => { $(id).disabled = false; });
+}
+function renderWebshareSettings(config) {
+  $("webshare-section").classList.remove("hidden");
+  $("webshare-measure-button").classList.toggle("hidden", !config.tcpTestSupported);
+  $("webshare-state").textContent = config.apiKeyConfigured ? "已配置" : "未配置";
+  $("webshare-plan-id").value = config.planId ?? "";
+  $("webshare-api-key").placeholder = config.apiKeyConfigured ? "已保存；留空保持不变" : "输入 Webshare API key";
+  const select = $("webshare-node"); select.replaceChildren();
+  const placeholder = document.createElement("option"); placeholder.value = ""; placeholder.textContent = "请选择固定节点"; select.append(placeholder);
+  for (const node of config.nodes ?? []) {
+    const option = document.createElement("option"); option.value = node.id; option.disabled = !node.valid;
+    option.textContent = node.host + ":" + node.port + " · " + node.countryCode + (node.valid ? "" : " · 不可用"); option.dataset.nodeLabel = option.textContent; const measured = webshareLatencies.get(node.id); if (measured) option.textContent += " · " + (measured.medianMs == null ? "连接失败" : measured.medianMs + " ms"); select.append(option);
+  }
+  select.value = config.selectedNodeId ?? "";
+  $("webshare-active").textContent = config.activeNode
+    ? "当前出口：" + config.activeNode.host + ":" + config.activeNode.port + (config.activeSource === "bootstrap" ? "（保留现有配置）" : "")
+    : config.activeSource === "none" ? "当前出口：未启用代理" : "当前出口：直接连接";
+  $("webshare-synced").textContent = config.lastSyncedAt ? "同步：" + fmtTime(config.lastSyncedAt) : "未同步";
+  webshareButtons.forEach(id => { $(id).disabled = webshareBusy; });
+}
+async function loadWebshareSettings() {
+  const epoch = uiEpoch, token = ++webshareRequestToken;
+  try {
+    const config = await (await adminCall("/admin/webshare")).json();
+    if (epoch !== uiEpoch || token !== webshareRequestToken) return;
+    renderWebshareSettings(config);
+    $("network-section").classList.add("hidden");
+  } catch (error) {
+    if (epoch !== uiEpoch || token !== webshareRequestToken) return;
+    if (error.status === 404) $("webshare-section").classList.add("hidden");
+    else { $("webshare-section").classList.remove("hidden"); setMessage("webshare-message", error.message); }
+  } finally {
+    if (epoch === uiEpoch && token === webshareRequestToken) {
+      $("settings-content").classList.remove("hidden");
+      $("settings-loading").classList.add("hidden");
+    }
+  }
+}
+async function changeWebshare(path, method, body, success) {
+  if (webshareBusy) return;
+  const epoch = uiEpoch, token = ++webshareRequestToken; webshareBusy = true;
+  webshareButtons.forEach(id => { $(id).disabled = true; }); $("webshare-node").disabled = true;
+  setMessage("webshare-message", "");
+  try {
+    const config = await (await adminCall(path, { method, body: JSON.stringify(body) })).json();
+    if (epoch !== uiEpoch || token !== webshareRequestToken) return;
+    if (path === "/admin/webshare" || path === "/admin/webshare/sync") webshareLatencies.clear();
+    $("webshare-api-key").value = ""; renderWebshareSettings(config); setMessage("webshare-message", success);
+  } catch (error) { if (epoch === uiEpoch && token === webshareRequestToken) setMessage("webshare-message", error.message); }
+  finally { if (epoch === uiEpoch && token === webshareRequestToken) { webshareBusy = false; webshareButtons.forEach(id => { $(id).disabled = false; }); $("webshare-node").disabled = false; } }
+}
+$("webshare-save-button").addEventListener("click", () => {
+  const body = { planId: value("webshare-plan-id") ? Number(value("webshare-plan-id")) : null };
+  const key = value("webshare-api-key"); if (key) body.apiKey = key;
+  void changeWebshare("/admin/webshare", "PATCH", body, "已保存。");
+});
+$("webshare-sync-button").addEventListener("click", () => { void changeWebshare("/admin/webshare/sync", "POST", {}, "已刷新。"); });
+$("webshare-measure-button").addEventListener("click", () => { void measureWebshare(); });
+async function measureWebshare() {
+  if (webshareBusy) return;
+  const select = $("webshare-node"), nodeId = select.value;
+  if (!nodeId) return setMessage("webshare-message", "请选择可用节点。");
+  const epoch = uiEpoch, token = ++webshareRequestToken;
+  webshareBusy = true; webshareButtons.forEach(id => { $(id).disabled = true; }); select.disabled = true;
+  setMessage("webshare-message", "测速中…");
+  try {
+    const result = await (await adminCall("/admin/webshare/measure", { method: "POST", body: JSON.stringify({ nodeId }) })).json();
+    if (epoch !== uiEpoch || token !== webshareRequestToken) return;
+    const text = result.medianMs == null ? "TCP 连接失败（0/3）" : `TCP 连接：${result.medianMs} ms（${result.successCount}/3）`;
+    const option = [...select.options].find(item => item.value === nodeId);
+    if (option) { const base = option.dataset.nodeLabel ?? option.textContent; option.dataset.nodeLabel = base; option.textContent = base + " · " + (result.medianMs == null ? "连接失败" : result.medianMs + " ms"); }
+    webshareLatencies.set(nodeId, result); setMessage("webshare-message", text);
+  } catch (error) { if (epoch === uiEpoch && token === webshareRequestToken) setMessage("webshare-message", error.message); }
+  finally { if (epoch === uiEpoch && token === webshareRequestToken) { webshareBusy = false; webshareButtons.forEach(id => { $(id).disabled = false; }); select.disabled = false; } }
+}
+$("webshare-apply-button").addEventListener("click", () => {
+  const nodeId = $("webshare-node").value;
+  if (!nodeId) return setMessage("webshare-message", "请选择可用节点。");
+  void changeWebshare("/admin/webshare/apply", "POST", { nodeId }, "已启用。");
+});
+$("webshare-disable-button").addEventListener("click", () => { void changeWebshare("/admin/webshare/apply", "POST", { nodeId: null }, "已关闭代理。"); });
+
 function renderKey(key) {
   const row = document.createElement("article"); row.className = "key-row";
   const detail = document.createElement("div"); detail.className = "key-detail";
@@ -1289,7 +1400,7 @@ async function loadLogSettings() { const epoch = uiEpoch;
   catch (error) { setMessage("log-settings-message", error.message); }
 }
 async function saveLogSettings() { const epoch = uiEpoch;
-  try { const body = await (await adminCall("/admin/log-settings", { method: "PATCH", body: JSON.stringify({ captureBodies: $("log-body-enabled").checked, summaryRetentionDays: Number($("log-retention-days").value), bodyRetentionDays: Number($("body-retention-days").value) }) })).json(); if (epoch !== uiEpoch) return; $("log-settings-state").textContent = body.captureBodies ? "正文已开启" : "正文已关闭"; setMessage("log-settings-message", "日志设置已保存。"); }
+  try { const body = await (await adminCall("/admin/log-settings", { method: "PATCH", body: JSON.stringify({ captureBodies: $("log-body-enabled").checked, summaryRetentionDays: Number($("log-retention-days").value), bodyRetentionDays: Number($("body-retention-days").value) }) })).json(); if (epoch !== uiEpoch) return; $("log-settings-state").textContent = body.captureBodies ? "正文已开启" : "正文已关闭"; setMessage("log-settings-message", "已保存。"); }
   catch (error) { setMessage("log-settings-message", error.message); }
 }
 async function refreshAccountData() {

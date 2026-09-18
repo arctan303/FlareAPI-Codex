@@ -1,0 +1,45 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "flareapi",
+  "main": "experiments/flareapi-worker.ts",
+  "compatibility_date": "2026-09-06",
+  "account_id": "ed6c2f7b12e4f0659cf8b70077fa649b",
+  "workers_dev": true,
+  "preview_urls": false,
+  "routes": [],
+  "observability": {
+    "enabled": false
+  },
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": true
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "ACCOUNT",
+        "class_name": "WebshareAccount"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "webshare-v1",
+      "new_sqlite_classes": [
+        "WebshareAccount"
+      ]
+    }
+  ],
+  "secrets": {
+    "required": [
+      "ADMIN_API_KEY"
+    ]
+  },
+  "define": {
+    "FLAREAPI_ORIGIN": "\"https://flareapi.12213443th.workers.dev\""
+  }
+}
