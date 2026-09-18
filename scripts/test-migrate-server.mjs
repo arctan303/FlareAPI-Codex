@@ -11,7 +11,7 @@ const outputRoot = resolve('output/server-migration-tests');
 const encryptionKey = Buffer.alloc(32, 9).toString('base64');
 const credentials = { idToken: 'fixture-id-token', accessToken: 'fixture-access-token', refreshToken: 'fixture-refresh-token',
   accountId: 'fixture-account', expiresAt: Date.now() + 86_400_000, lastRefreshAt: Date.now(), version: 1 };
-async function fixture() {
+async function fixture(modern = false) {
   await mkdir(outputRoot, { recursive: true });
   const root = await mkdtemp(join(outputRoot, 'migration-'));
   const legacyRoot = join(root, 'legacy');
@@ -29,6 +29,17 @@ async function fixture() {
   put.run('credentials', serialize(envelope)); put.run('credential-version', serialize(1));
   put.run('api-keys', serialize([{ id: 'key_fixture', digest: 'fixture-key-digest', name: 'kept', masked: 'fixture...key', createdAt: 1 }]));
   put.run('access-config', serialize({ enabled: false, teamDomain: null, applicationAud: null, revision: 1, updatedAt: 1 }));
+  let savedAccounts, activeAccountId;
+  if (modern) {
+    activeAccountId = createHash('sha256').update(credentials.accountId).digest('base64url');
+    const second = { ...credentials, accountId: 'fixture-second-account', refreshToken: 'fixture-second-refresh-token' };
+    const secondIv = new Uint8Array(12).fill(5);
+    const secondCipher = await crypto.subtle.encrypt({ name: 'AES-GCM', iv: secondIv, additionalData: new TextEncoder().encode('oneapi:credentials:v1') }, key, new TextEncoder().encode(JSON.stringify(second)));
+    const base = { email: null, plan: null, idHint: '…fixture', tokenExpiresAt: credentials.expiresAt, lastRefreshAt: credentials.lastRefreshAt, createdAt: 1, reauthenticationReason: null };
+    savedAccounts = [{ ...base, id: activeAccountId, credentials: envelope }, { ...base, id: createHash('sha256').update(second.accountId).digest('base64url'), credentials: { version: 1, iv: Buffer.from(secondIv).toString('base64'), ciphertext: Buffer.from(secondCipher).toString('base64') } }];
+    put.run('saved-accounts-v1', serialize(savedAccounts)); put.run('active-account-v1', serialize(activeAccountId));
+  }
+
   put.run('admin-sessions', serialize([{ digest: 'session_must_not_migrate' }]));
   put.run('leases', serialize([{ id: 'lease_must_not_migrate' }]));
   sourceDb.exec(`CREATE TABLE request_logs (
@@ -40,7 +51,7 @@ async function fixture() {
   addLog.run('finished', 'req1', 'key_fixture', 'kept', 'responses', 'gpt-5.5', 1, 2, 1, 200, 'completed', 1, 2, 3, 1, 0, 0, '{"input":"fixture"}', '{"output":"fixture"}', null);
   addLog.run('active', 'req2', 'key_fixture', 'kept', 'responses', 'gpt-5.5', 2, null, null, null, 'started', null, null, null, 0, 0, 0, null, null, null);
   sourceDb.close();
-  return { root, source, legacyRoot, envelope, targetPath: join(root, 'new/oneapi.sqlite') };
+  return { root, source, legacyRoot, envelope, savedAccounts, activeAccountId, targetPath: join(root, 'new/oneapi.sqlite') };
 }
 async function cleanup(root) {
   const absolute = resolve(root);
@@ -93,4 +104,21 @@ test('running legacy Node store lock prevents migration', async () => {
     await assert.rejects(migrateLegacy({ ...value, encryptionKey }), { code: 'legacy_runtime_running' });
     await assert.rejects(readFile(value.targetPath), { code: 'ENOENT' });
   } finally { lock?.close(); await cleanup(value.root); }
+});
+
+
+test('migrates multiple encrypted accounts and default selection without touching the source', async () => {
+  const value = await fixture(true);
+  try {
+    const before = await hash(value.source);
+    const result = await migrateLegacy({ ...value, encryptionKey });
+    assert.equal(result.persistentKeys, 6); assert.equal(await hash(value.source), before);
+    const database = new DatabaseSync(value.targetPath, { readOnly: true });
+    try {
+      const row = database.prepare('SELECT value FROM oneapi_kv WHERE key = ?');
+      assert.deepEqual(JSON.parse(row.get('saved-accounts-v1').value), value.savedAccounts);
+      assert.equal(JSON.parse(row.get('active-account-v1').value), value.activeAccountId);
+    } finally { database.close(); }
+    assert.equal((await readFile(value.targetPath)).includes(Buffer.from('fixture-second-refresh-token')), false);
+  } finally { await cleanup(value.root); }
 });

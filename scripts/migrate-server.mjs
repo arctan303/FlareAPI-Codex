@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { SqliteAccountStorage } from '../src/runtime/node/sqlite-storage.ts';
 
 const KEEP_KEYS = ['credentials', 'credential-version', 'generation', 'reauth-required', 'api-keys',
-  'legacy-key-policy', 'access-config', 'log-settings'];
+  'legacy-key-policy', 'access-config', 'log-settings', 'saved-accounts-v1', 'active-account-v1'];
 const LOG_COLUMNS = ['id', 'request_id', 'key_id', 'key_name', 'protocol', 'model', 'started_at', 'completed_at',
   'duration_ms', 'http_status', 'outcome', 'input_tokens', 'output_tokens', 'total_tokens', 'body_captured',
   'request_truncated', 'response_truncated', 'request_body', 'response_body', 'body_expires_at'];

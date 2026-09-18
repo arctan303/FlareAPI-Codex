@@ -1,5 +1,7 @@
 # FlareAPI
 
+本地新增（待发布）：可保存多个 Codex 账号，后台手动切换默认，已有 API 密钥跟随默认。账号首次各自授权，添加不会覆盖原账号。当前验证及上线边界见 [MULTI-ACCOUNT-001](docs/tasks/MULTI-ACCOUNT-001.md)。
+
 > v0.2.0-dev.5 修复 Cloudflare Access 登录后无法进入后台的问题，保留 Codex 原生接入及现有管理后台能力。网络配置与 Tunnel / 公网 HTTPS / 反代安装见 [网络配置教程](docs/NETWORK.md)。
 
 当前版本：[v0.2.0-dev.5 发布说明](docs/releases/v0.2.0-dev.5.md)，[GitHub 小版本](https://github.com/arctan303/FlareAPI-Codex/releases/tag/v0.2.0-dev.5)。首次安装请下载 Release 的 `oneapi-server-*.tar.gz` 附件。

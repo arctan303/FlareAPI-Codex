@@ -3,7 +3,7 @@ import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import type { AccountStorage, SqlCursor, SqlStorage, StorageDeleteResult, StorageTransaction } from "../contracts";
 
 const MIGRATABLE_KEYS = new Set([
-  "credentials", "credential-version", "generation", "reauth-required",
+  "credentials", "credential-version", "generation", "reauth-required", "saved-accounts-v1", "active-account-v1",
   "api-keys", "legacy-key-policy", "access-config", "log-settings"
 ]);
 const REQUEST_LOG_COLUMNS = [

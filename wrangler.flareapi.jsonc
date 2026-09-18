@@ -40,6 +40,6 @@
     ]
   },
   "define": {
-    "FLAREAPI_ORIGIN": "\"https://flareapi.12213443th.workers.dev\""
+    "FLAREAPI_ORIGIN": "\"https://flareapi.arctan.workers.dev\""
   }
 }

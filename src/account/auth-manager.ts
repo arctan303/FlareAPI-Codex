@@ -33,6 +33,9 @@ import { fetchModels } from "../codex/upstream";
 import { readJsonBody } from "../protocol/requests";
 import type { AccountRequestContext, AccountServiceConfig, AccountStorage } from "../runtime/contracts";
 
+import { ACCOUNTS_KEY, ACTIVE_ACCOUNT_KEY, type SavedAccount, saveAccount, registerLegacyAccount, markActiveAccountUnavailable, removeActiveAccount } from "./account-registry";
+
+export const LOGIN_GENERATION_KEY = "login-generation-v1";
 export const CREDENTIALS_KEY = "credentials";
 export const CREDENTIAL_VERSION_KEY = "credential-version";
 export const LOGIN_PUBLIC_KEY = "login-public";
@@ -80,7 +83,7 @@ export function sessionCookie(value: string, requestUrl: string, maxAgeSeconds: 
 export class AuthManager {
   private startPromise: Promise<LoginPublicState> | null = null;
   private pollPromise: Promise<LoginPublicState> | null = null;
-  private refreshPromise: Promise<StoredCredentials> | null = null;
+  private refreshTask: { promise: Promise<StoredCredentials>; state: { refreshed: boolean } } | null = null;
   private readonly accessVerifier = new AccessTokenVerifier();
 
   constructor(
@@ -88,6 +91,57 @@ export class AuthManager {
     private readonly env: AccountServiceConfig,
     private readonly deps: AuthManagerDeps
   ) {}
+
+  async initAccounts(): Promise<void> {
+    try { await this.storage.transaction(tx => registerLegacyAccount(tx, this.env.TOKEN_ENCRYPTION_KEY)); }
+    catch (error) {
+      // Keep management available so corrupt legacy credentials can be replaced by explicit authorization.
+      if (!(error instanceof GatewayError) || error.code !== "credential_decryption_failed") throw error;
+    }
+  }
+
+  get refreshing(): boolean { return this.refreshTask !== null; }
+
+  async loginGeneration(): Promise<number> {
+    return (await this.storage.get<number>(LOGIN_GENERATION_KEY)) ?? (await this.currentGeneration());
+  }
+
+  async listAccounts(): Promise<Response> {
+    const snapshot = await this.storage.transaction(async tx => ({
+      rows: (await tx.get<SavedAccount[]>(ACCOUNTS_KEY)) ?? [],
+      activeId: (await tx.get<string>(ACTIVE_ACCOUNT_KEY)) ?? null
+    }));
+    return Response.json({ activeAccountId: snapshot.activeId, accounts: snapshot.rows.map(({ credentials, ...row }) => ({
+      ...row, connected: credentials !== null, isDefault: row.id === snapshot.activeId,
+      reauthenticationRequired: row.reauthenticationReason !== null
+    })) }, { headers: { "Cache-Control": "no-store" } });
+  }
+
+  async changeAccount(id: string, remove = false): Promise<Response> {
+    await this.storage.transaction(async tx => {
+      const login = await tx.get<LoginPublicState>(LOGIN_PUBLIC_KEY);
+      if (login?.status === "pending" && login.expiresAt > Date.now()) throw new GatewayError(409, "account_login_pending", "请先完成或取消正在进行的账号授权。", undefined, "invalid_request_error");
+      const rows = (await tx.get<SavedAccount[]>(ACCOUNTS_KEY)) ?? [];
+      const row = rows.find(item => item.id === id);
+      if (!row) throw new GatewayError(404, "account_not_found", "没有找到该保存账号。", undefined, "invalid_request_error");
+      const activeId = await tx.get<string>(ACTIVE_ACCOUNT_KEY);
+      if (remove) {
+        await tx.put(ACCOUNTS_KEY, rows.filter(item => item.id !== id));
+        if (activeId !== id) return;
+        await tx.delete([ACTIVE_ACCOUNT_KEY, CREDENTIALS_KEY, CREDENTIAL_VERSION_KEY, REAUTH_KEY]);
+      } else {
+        if (!row.credentials) throw new GatewayError(503, "account_reauthentication_required", "该账号需要重新授权后才能使用。", undefined, "authentication_error");
+        if (activeId === id) return;
+        const value = await decryptJson<StoredCredentials>(row.credentials, this.env.TOKEN_ENCRYPTION_KEY, "oneapi:credentials:v1");
+        if (await hashSecret(value.accountId) !== row.id) throw new GatewayError(503, "account_state_corrupt", "保存账号状态不一致。", undefined, "server_error");
+        await tx.put({ [ACTIVE_ACCOUNT_KEY]: id, [CREDENTIALS_KEY]: row.credentials, [CREDENTIAL_VERSION_KEY]: value.version });
+        await tx.delete(REAUTH_KEY);
+      }
+      await tx.put(GENERATION_KEY, ((await tx.get<number>(GENERATION_KEY)) ?? 0) + 1);
+      await tx.delete([LOGIN_PUBLIC_KEY, LOGIN_PRIVATE_KEY, "model-capabilities", "usage-cache"]);
+    });
+    return this.listAccounts();
+  }
 
   async currentGeneration(): Promise<number> {
     return (await this.storage.get<number>(GENERATION_KEY)) ?? 0;
@@ -117,6 +171,7 @@ export class AuthManager {
   async writeCredentials(value: StoredCredentials): Promise<void> {
     const encrypted = await this.prepareCredentials(value);
     await this.storage.transaction(async (transaction) => {
+      await saveAccount(transaction, value, encrypted, true);
       await transaction.put({ [CREDENTIALS_KEY]: encrypted, [CREDENTIAL_VERSION_KEY]: value.version });
       await transaction.delete(REAUTH_KEY);
     });
@@ -391,6 +446,7 @@ export class AuthManager {
       if (await transaction.get(CREDENTIALS_KEY)) {
         throw new GatewayError(409, "account_already_connected", "当前 Worker 已连接账户，不能导入覆盖。", undefined, "invalid_request_error");
       }
+      await saveAccount(transaction, credentials, encrypted, true);
       const generation = ((await transaction.get<number>(GENERATION_KEY)) ?? 0) + 1;
       await transaction.put({
         [GENERATION_KEY]: generation,
@@ -449,9 +505,13 @@ export class AuthManager {
       try {
         const existing = await this.storage.get<LoginPublicState>(LOGIN_PUBLIC_KEY);
         if (existing?.status === "pending" && existing.expiresAt > Date.now()) return existing;
-        const generation = await this.nextGeneration();
+        const generation = await this.storage.transaction(async tx => {
+          const value = ((await tx.get<number>(LOGIN_GENERATION_KEY)) ?? (await tx.get<number>(GENERATION_KEY)) ?? 0) + 1;
+          await tx.put(LOGIN_GENERATION_KEY, value);
+          return value;
+        });
         const result = await requestDeviceCode((request) => this.deps.timedFetch(request));
-        if (await this.currentGeneration() !== generation) throw new GatewayError(409, "login_superseded", "登录请求已被取消或替代。", undefined, "invalid_request_error");
+        if (await this.loginGeneration() !== generation) throw new GatewayError(409, "login_superseded", "登录请求已被取消或替代。", undefined, "invalid_request_error");
         const intervalMs = this.env.MOCK_UPSTREAM === "true" ? 25 : result.intervalMs;
         const publicState: LoginPublicState = {
           id: crypto.randomUUID(),
@@ -466,7 +526,7 @@ export class AuthManager {
         const privateState = await encryptJson({ deviceAuthId: result.deviceAuthId } satisfies LoginPrivateState, this.env.TOKEN_ENCRYPTION_KEY, `oneapi:login:${generation}`);
         await this.loginStateBarrier();
         await this.storage.transaction(async (transaction) => {
-          const transactionGeneration = (await transaction.get<number>(GENERATION_KEY)) ?? 0;
+          const transactionGeneration = (await transaction.get<number>(LOGIN_GENERATION_KEY)) ?? 0;
           if (transactionGeneration !== generation) throw new GatewayError(409, "login_superseded", "登录请求已被取消或替代。", undefined, "invalid_request_error");
           await transaction.put({ [LOGIN_PUBLIC_KEY]: publicState, [LOGIN_PRIVATE_KEY]: privateState });
         });
@@ -506,7 +566,7 @@ export class AuthManager {
         const waiting = { ...current, nextPollAt: Date.now() + current.intervalMs };
         await this.loginStateBarrier();
         await this.storage.transaction(async (transaction) => {
-          const generation = (await transaction.get<number>(GENERATION_KEY)) ?? 0;
+          const generation = (await transaction.get<number>(LOGIN_GENERATION_KEY)) ?? 0;
           const login = await transaction.get<LoginPublicState>(LOGIN_PUBLIC_KEY);
           if (generation !== current.generation || !login || login.id !== current.id || login.status !== "pending") {
             throw new GatewayError(409, "login_superseded", "登录查询已被取消或替代。", undefined, "invalid_request_error");
@@ -517,7 +577,7 @@ export class AuthManager {
         if (poll.status === "pending") return waiting;
         const tokens = await exchangeDeviceCode((request) => this.deps.timedFetch(request), poll.authorizationCode, poll.codeVerifier);
         const latest = await this.storage.get<LoginPublicState>(LOGIN_PUBLIC_KEY);
-        if (!latest || latest.generation !== current.generation || latest.status !== "pending" || await this.currentGeneration() !== current.generation) {
+        if (!latest || latest.generation !== current.generation || latest.status !== "pending" || await this.loginGeneration() !== current.generation) {
           throw new GatewayError(409, "login_superseded", "登录响应到达时请求已被取消或替代，未保存凭据。", undefined, "invalid_request_error");
         }
         const accountId = accountIdFromIdToken(tokens.idToken);
@@ -534,18 +594,23 @@ export class AuthManager {
         const encryptedCredentials = await this.prepareCredentials(credentials);
         let connected: LoginPublicState | undefined;
         await this.storage.transaction(async (transaction) => {
-          const transactionGeneration = (await transaction.get<number>(GENERATION_KEY)) ?? 0;
+          const transactionGeneration = (await transaction.get<number>(LOGIN_GENERATION_KEY)) ?? 0;
           const transactionLogin = await transaction.get<LoginPublicState>(LOGIN_PUBLIC_KEY);
           if (transactionGeneration !== current.generation || !transactionLogin || transactionLogin.generation !== current.generation || transactionLogin.status !== "pending") {
             throw new GatewayError(409, "login_superseded", "登录响应到达时请求已被取消或替代，未保存凭据。", undefined, "invalid_request_error");
           }
           connected = { ...transactionLogin, status: "connected", userCode: "", nextPollAt: 0 };
-          await transaction.put({
-            [CREDENTIALS_KEY]: encryptedCredentials,
-            [CREDENTIAL_VERSION_KEY]: credentials.version,
-            [LOGIN_PUBLIC_KEY]: connected
-          });
-          await transaction.delete([LOGIN_PRIVATE_KEY, REAUTH_KEY]);
+          const activeId = await transaction.get<string>(ACTIVE_ACCOUNT_KEY);
+          const id = await hashSecret(credentials.accountId);
+          const activate = !activeId || activeId === id;
+          await saveAccount(transaction, credentials, encryptedCredentials, activate);
+          await transaction.put(LOGIN_PUBLIC_KEY, connected);
+          await transaction.delete(LOGIN_PRIVATE_KEY);
+          if (activate) {
+            await transaction.put({ [CREDENTIALS_KEY]: encryptedCredentials, [CREDENTIAL_VERSION_KEY]: credentials.version,
+              [GENERATION_KEY]: ((await transaction.get<number>(GENERATION_KEY)) ?? 0) + 1 });
+            await transaction.delete([REAUTH_KEY, "model-capabilities", "usage-cache"]);
+          }
         });
         if (!connected) throw new GatewayError(500, "credential_commit_failed", "凭据事务未完成。", undefined, "server_error");
         return connected;
@@ -560,9 +625,9 @@ export class AuthManager {
     await this.storage.transaction(async (transaction) => {
       const current = await transaction.get<LoginPublicState>(LOGIN_PUBLIC_KEY);
       if (!current || current.id !== loginId) throw new GatewayError(404, "login_not_found", "没有找到该登录请求。", "login_id");
-      const generation = ((await transaction.get<number>(GENERATION_KEY)) ?? 0) + 1;
+      const generation = ((await transaction.get<number>(LOGIN_GENERATION_KEY)) ?? 0) + 1;
       await transaction.put({
-        [GENERATION_KEY]: generation,
+        [LOGIN_GENERATION_KEY]: generation,
         [LOGIN_PUBLIC_KEY]: { ...current, status: "cancelled", userCode: "", nextPollAt: 0 }
       });
       await transaction.delete(LOGIN_PRIVATE_KEY);
@@ -575,7 +640,8 @@ export class AuthManager {
     }
     await this.storage.transaction(async (transaction) => {
       const generation = ((await transaction.get<number>(GENERATION_KEY)) ?? 0) + 1;
-      await transaction.put(GENERATION_KEY, generation);
+      await removeActiveAccount(transaction);
+      await transaction.put({ [GENERATION_KEY]: generation, [LOGIN_GENERATION_KEY]: ((await transaction.get<number>(LOGIN_GENERATION_KEY)) ?? generation) + 1 });
       await transaction.delete([CREDENTIALS_KEY, CREDENTIAL_VERSION_KEY, LOGIN_PUBLIC_KEY, LOGIN_PRIVATE_KEY, "model-capabilities", "leases", REAUTH_KEY, "usage-cache"]);
     });
   }
@@ -586,26 +652,38 @@ export class AuthManager {
       const version = await transaction.get<number>(CREDENTIAL_VERSION_KEY);
       if (generation !== expectedGeneration || version !== expectedVersion) return;
       await transaction.delete([CREDENTIALS_KEY, CREDENTIAL_VERSION_KEY, "usage-cache"]);
+      await markActiveAccountUnavailable(transaction, "refreshed_token_rejected");
       await transaction.put(REAUTH_KEY, { code: "refreshed_token_rejected", at: Date.now() });
     });
   }
 
   async refreshCredentials(force = false): Promise<StoredCredentials> {
-    const credentials = await this.readCredentials();
-    if (!credentials) throw new GatewayError(503, "account_not_connected", "尚未连接 Codex 账户。", undefined, "authentication_error");
-    const due = credentials.expiresAt !== null
-      ? credentials.expiresAt <= Date.now() + 5 * 60 * 1000
-      : credentials.lastRefreshAt <= Date.now() - 8 * 24 * 60 * 60 * 1000;
-    if (!force && !due) return credentials;
-    if (this.refreshPromise) return this.refreshPromise;
-    const expectedGeneration = await this.currentGeneration();
-    this.refreshPromise = (async () => {
+    const existing = this.refreshTask;
+    if (existing) {
+      const credentials = await existing.promise;
+      if (!force || existing.state.refreshed) return credentials;
+      // A shared fresh-token read did no OAuth work: force must start or join a real refresh.
+      if (this.refreshTask === existing) this.refreshTask = null;
+      return this.refreshCredentials(true);
+    }
+    // Establish the shared task before the first await, including credential and generation reads.
+    const state = { refreshed: false };
+    const running = (async () => {
+      const credentials = await this.readCredentials();
+      if (!credentials) throw new GatewayError(503, "account_not_connected", "尚未连接 Codex 账户。", undefined, "authentication_error");
+      const due = credentials.expiresAt !== null
+        ? credentials.expiresAt <= Date.now() + 5 * 60 * 1000
+        : credentials.lastRefreshAt <= Date.now() - 8 * 24 * 60 * 60 * 1000;
+      if (!force && !due) return credentials;
+      const expectedGeneration = await this.currentGeneration();
+      state.refreshed = true;
       try {
         const updated = await refreshOAuthTokens((request) => this.deps.timedFetch(request), credentials.refreshToken);
         const current = await this.readCredentials();
         if (!current || current.version !== credentials.version || await this.currentGeneration() !== expectedGeneration) {
           throw new GatewayError(409, "refresh_superseded", "账户在刷新期间已变更，旧刷新结果未写回。", undefined, "invalid_request_error");
         }
+        if (updated.idToken && accountIdFromIdToken(updated.idToken) !== current.accountId) throw new GatewayError(503, "account_reauthentication_required", "刷新响应的账号身份不一致，请重新授权。", undefined, "authentication_error");
         const next: StoredCredentials = {
           ...current,
           idToken: updated.idToken ?? current.idToken,
@@ -623,6 +701,7 @@ export class AuthManager {
           if (generation !== expectedGeneration || version !== credentials.version) {
             throw new GatewayError(409, "refresh_superseded", "账户在刷新期间已变更，旧刷新结果未写回。", undefined, "invalid_request_error");
           }
+          await saveAccount(transaction, next, encrypted, true);
           await transaction.put({ [CREDENTIALS_KEY]: encrypted, [CREDENTIAL_VERSION_KEY]: next.version });
           await transaction.delete(REAUTH_KEY);
         });
@@ -643,6 +722,7 @@ export class AuthManager {
             return;
           }
           await transaction.delete([CREDENTIALS_KEY, CREDENTIAL_VERSION_KEY, "usage-cache"]);
+          await markActiveAccountUnavailable(transaction, reason);
           await transaction.put(REAUTH_KEY, { code: reason, at: Date.now() });
         });
         if (superseded) throw new GatewayError(409, "refresh_superseded", "账户在刷新期间已断开或变更，旧刷新结果未写回。", undefined, "invalid_request_error");
@@ -654,11 +734,12 @@ export class AuthManager {
           undefined,
           "authentication_error"
         );
-      } finally {
-        this.refreshPromise = null;
       }
     })();
-    return this.refreshPromise;
+    const task = { promise: running, state };
+    this.refreshTask = task;
+    try { return await running; }
+    finally { if (this.refreshTask === task) this.refreshTask = null; }
   }
 
   clearAccessVerifier(): void {

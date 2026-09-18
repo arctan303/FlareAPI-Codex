@@ -27,6 +27,10 @@ export class AccountService {
   private readonly auditLogger: AuditLogger;
   private readonly upstreamGateway: UpstreamGateway;
 
+  private accountOperations = 0;
+  private accountChanges = 0;
+  private readonly loginChanges = new Map<string, Promise<Response>>();
+
   readonly ready: Promise<void>;
 
   constructor(
@@ -51,10 +55,12 @@ export class AccountService {
       this.auditLogger
     );
 
+    const authManager = this.authManager;
     const auditLogger = this.auditLogger;
     const upstreamGateway = this.upstreamGateway;
     const customOriginsManager = this.customOriginsManager;
     this.ready = (async () => {
+      await authManager.initAccounts();
       await auditLogger.init();
       await upstreamGateway.init();
       await customOriginsManager.loadCustomOrigins();
@@ -101,6 +107,28 @@ export class AccountService {
 
   diagnoseEgress(request: Request, requestId: string): Promise<Response> {
     return this.upstreamGateway.diagnoseEgress(request, requestId);
+  }
+
+  private async accountOperation(action: () => Promise<Response>): Promise<Response> {
+    if (this.accountChanges > 0) throw new GatewayError(409, "account_busy", "账号正在变更，请稍后重试。", undefined, "invalid_request_error");
+    this.accountOperations++;
+    try { return await action(); } finally { this.accountOperations--; }
+  }
+
+  private async accountChange(action: () => Promise<Response>, allowActive = false): Promise<Response> {
+    if (!allowActive && (this.accountChanges > 0 || this.accountOperations > 0 || this.authManager.refreshing || this.upstreamGateway.hasActiveGenerations())) {
+      throw new GatewayError(409, "account_busy", "当前有请求或令牌刷新正在进行，请完成后再变更账号。", undefined, "invalid_request_error");
+    }
+    this.accountChanges++;
+    try { return await action(); } finally { this.accountChanges--; }
+  }
+
+  private async loginChange(key: string, action: () => Promise<Response>): Promise<Response> {
+    const existing = this.loginChanges.get(key);
+    if (existing) return (await existing).clone();
+    const running = this.accountChange(action);
+    this.loginChanges.set(key, running);
+    try { return (await running).clone(); } finally { if (this.loginChanges.get(key) === running) this.loginChanges.delete(key); }
   }
 
   async fetch(request: Request, context: AccountRequestContext = {}): Promise<Response> {
@@ -156,6 +184,13 @@ export class AccountService {
         if (extension) return extension;
       }
       if (request.method === "GET" && url.pathname === "/admin/status") return await this.authManager.status();
+      if (request.method === "GET" && url.pathname === "/admin/accounts") return await this.authManager.listAccounts();
+      const accountMatch = /^\/admin\/accounts\/([A-Za-z0-9_-]{43})(\/activate)?$/.exec(url.pathname);
+      if (accountMatch && ((request.method === "POST" && accountMatch[2]) || (request.method === "DELETE" && !accountMatch[2]))) {
+        const body = await readJsonBody(request);
+        if (Object.keys(body).length) throw new GatewayError(400, "invalid_request", "账号操作不接受参数。", "body");
+        return await this.accountChange(() => this.authManager.changeAccount(accountMatch[1]!, request.method === "DELETE"));
+      }
       if (request.method === "GET" && url.pathname === "/admin/network/origins") {
         return Response.json(await this.getNetworkOrigins(), { headers: { "Cache-Control": "no-store" } });
       }
@@ -180,7 +215,7 @@ export class AccountService {
         if ([...url.searchParams.keys()].some((key) => key !== "refresh") || !["", "true", "false"].includes(url.searchParams.get("refresh") ?? "")) {
           throw new GatewayError(400, "invalid_request", "usage 只接受 refresh=true|false。", "refresh");
         }
-        return await this.upstreamGateway.usage(url.searchParams.get("refresh") === "true", adminAuthentication !== null);
+        return await this.accountOperation(() => this.upstreamGateway.usage(url.searchParams.get("refresh") === "true", adminAuthentication !== null));
       }
       if (request.method === "GET" && url.pathname === "/admin/api-keys") return await this.keyManager.listApiKeys();
       if (request.method === "POST" && url.pathname === "/admin/api-keys") return await this.keyManager.createApiKey(request);
@@ -195,12 +230,12 @@ export class AccountService {
       if (request.method === "POST" && url.pathname === "/admin/device/start") {
         const body = await readJsonBody(request);
         if (Object.keys(body).length !== 0) throw new GatewayError(400, "invalid_request", "device/start 不接受参数。", "body");
-        return Response.json(await this.authManager.startLogin(), { headers: { "Cache-Control": "no-store" } });
+        return await this.loginChange("start", async () => Response.json(await this.authManager.startLogin(), { headers: { "Cache-Control": "no-store" } }));
       }
       if (request.method === "POST" && url.pathname === "/admin/device/poll") {
         const body = await readJsonBody(request);
         if (typeof body.login_id !== "string" || Object.keys(body).some((key) => key !== "login_id")) throw new GatewayError(400, "invalid_request", "poll 只接受 login_id。", "login_id");
-        return Response.json(await this.authManager.pollLogin(body.login_id), { headers: { "Cache-Control": "no-store" } });
+        return await this.loginChange(`poll:${body.login_id}`, async () => Response.json(await this.authManager.pollLogin(body.login_id as string), { headers: { "Cache-Control": "no-store" } }));
       }
       if (request.method === "POST" && url.pathname === "/admin/device/cancel") {
         const body = await readJsonBody(request);
@@ -211,27 +246,29 @@ export class AccountService {
       if (request.method === "POST" && url.pathname === "/admin/disconnect") {
         const body = await readJsonBody(request);
         if (Object.keys(body).length !== 0) throw new GatewayError(400, "invalid_request", "disconnect 不接受参数。", "body");
-        await this.authManager.disconnect();
-        return new Response(null, { status: 204, headers: { "Cache-Control": "no-store" } });
+        return await this.accountChange(async () => {
+          await this.authManager.disconnect();
+          return new Response(null, { status: 204, headers: { "Cache-Control": "no-store" } });
+        }, true);
       }
       if (request.method === "POST" && url.pathname === "/admin/diagnostics/egress") {
-        return await this.upstreamGateway.diagnoseEgress(request, requestId);
+        return await this.accountOperation(() => this.upstreamGateway.diagnoseEgress(request, requestId));
       }
       if (request.method === "POST" && url.pathname === "/admin/diagnostics/websocket") {
-        return await this.upstreamGateway.diagnoseWebSocket(request);
+        return await this.accountOperation(() => this.upstreamGateway.diagnoseWebSocket(request));
       }
-      if (request.method === "GET" && url.pathname === "/admin/test/models") return await this.upstreamGateway.listModels();
-      if (request.method === "POST" && url.pathname === "/admin/test/responses") return await this.upstreamGateway.handleGeneration(request, false, undefined, requestId);
-      if (request.method === "POST" && url.pathname === "/admin/test/chat/completions") return await this.upstreamGateway.handleGeneration(request, true, undefined, requestId);
+      if (request.method === "GET" && url.pathname === "/admin/test/models") return await this.accountOperation(() => this.upstreamGateway.listModels());
+      if (request.method === "POST" && url.pathname === "/admin/test/responses") return await this.accountOperation(() => this.upstreamGateway.handleGeneration(request, false, undefined, requestId));
+      if (request.method === "POST" && url.pathname === "/admin/test/chat/completions") return await this.accountOperation(() => this.upstreamGateway.handleGeneration(request, true, undefined, requestId));
       if (request.method === "GET" && url.pathname === "/v1/models") {
         const clientVersion = url.searchParams.get("client_version");
         if (clientVersion !== null && !/^[A-Za-z0-9._-]{1,64}$/.test(clientVersion)) {
           throw new GatewayError(400, "invalid_request", "client_version 格式无效。", "client_version");
         }
-        return await this.upstreamGateway.listModels(gatewayIdentity!, clientVersion !== null);
+        return await this.accountOperation(() => this.upstreamGateway.listModels(gatewayIdentity!, clientVersion !== null));
       }
-      if (request.method === "POST" && url.pathname === "/v1/responses") return await this.upstreamGateway.handleGeneration(request, false, gatewayIdentity!, requestId);
-      if (request.method === "POST" && url.pathname === "/v1/chat/completions") return await this.upstreamGateway.handleGeneration(request, true, gatewayIdentity!, requestId);
+      if (request.method === "POST" && url.pathname === "/v1/responses") return await this.accountOperation(() => this.upstreamGateway.handleGeneration(request, false, gatewayIdentity!, requestId));
+      if (request.method === "POST" && url.pathname === "/v1/chat/completions") return await this.accountOperation(() => this.upstreamGateway.handleGeneration(request, true, gatewayIdentity!, requestId));
       throw new GatewayError(405, "method_not_allowed", "请求方法或接口不受支持。", undefined, "invalid_request_error");
     } catch (error) {
       return errorResponse(error, requestId, adminAuthentication !== null);

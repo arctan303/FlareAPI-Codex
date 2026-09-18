@@ -4,6 +4,8 @@ let pollTimer = null;
 let requestController = null;
 let conversation = [];
 let uiEpoch = 0;
+let accountListRequestToken = 0;
+let accountChangeInProgress = false;
 let accountRequestToken = 0;
 let modelRequestToken = 0;
 let logListRequestToken = 0;
@@ -53,6 +55,7 @@ function renderRoute({ focus = true } = {}) {
   activeRoute = route;
   const authenticated = !$("console").classList.contains("hidden");
   if (routeChanged && route === "logs" && authenticated) void loadLogs();
+  if (routeChanged && route === "account" && authenticated) void loadSavedAccounts();
   if (focus && authenticated) {
     const heading = document.querySelector(`[data-route-page="${route}"] h1`);
     requestAnimationFrame(() => {
@@ -161,6 +164,9 @@ function showLogin(message = "", navigate = true) {
   $("base-url-message").textContent = "";
   clearAccountOverview();
   clearModels();
+  accountListRequestToken++;
+  $("saved-account-list").replaceChildren();
+  setMessage("saved-account-message", "");
   $("logs-list").replaceChildren();
   if ($("modal-log-meta")) $("modal-log-meta").replaceChildren();
   if ($("modal-log-bodies")) $("modal-log-bodies").replaceChildren();
@@ -310,7 +316,10 @@ async function pollLogin() {
   } catch (error) {
     if (epoch !== uiEpoch) return;
     if (error.code === "poll_too_soon") schedulePoll(1000);
-    else {
+    else if (error.code === "account_busy") {
+      $("device-login-status").textContent = "等待当前请求完成后保存授权…";
+      schedulePoll(1500);
+    } else {
       $("device-login-status").textContent = error.message;
       loginId = null;
     }
@@ -336,9 +345,13 @@ async function cancelDeviceLogin() {
 }
 
 async function disconnectCodex() {
+  if (!window.confirm("移除默认账号在本网关保存的连接？其他账号和 API 密钥会保留。")) return;
   const epoch = uiEpoch;
   try {
-    await adminCall("/admin/disconnect", { method: "POST", body: "{}" });
+    const saved = await (await adminCall("/admin/accounts")).json();
+    if (epoch !== uiEpoch) return;
+    if (!saved.activeAccountId) { setMessage("account-message", "当前没有默认账号。"); return; }
+    await adminCall(`/admin/accounts/${saved.activeAccountId}`, { method: "DELETE", body: "{}" });
     if (epoch !== uiEpoch) return;
     accountRequestToken += 1;
     modelRequestToken += 1;
@@ -350,7 +363,8 @@ async function disconnectCodex() {
     clearModels();
     setBadge("account-badge", "未连接");
     setBadge("call-badge", "尚未测试");
-    setMessage("account-message", "Codex 连接和本地账户凭据已清除。后台登录和 API 密钥未改变。");
+    setMessage("account-message", "默认账号已移除。可从已保存账号中选择另一个默认账号。");
+    await loadSavedAccounts();
   } catch (error) {
     if (epoch !== uiEpoch) return;
     setMessage("account-message", error.message);
@@ -936,6 +950,8 @@ async function checkStatus() {
     setBadge("account-badge", body.connected ? "已连接" : body.reauthenticationRequired ? "需要重新连接" : "未连接");
     setMessage("account-message", body.connected ? `账户 ${body.account?.idHint || "已连接"} 已保存。` : "当前没有可用的 Codex 连接。");
     updateAccountDetailCard(body.account, body.connected, body.reauthenticationRequired);
+    await loadSavedAccounts();
+    if (epoch !== uiEpoch || requestToken !== accountRequestToken) return;
     if (body.login?.status === "pending") showDeviceLogin(body.login);
     await loadAccountOverview(false, requestToken);
   } catch (error) {
@@ -1671,3 +1687,95 @@ $("modal-log-download-btn")?.addEventListener("click", () => {
     URL.revokeObjectURL(url);
   }
 });
+
+
+function renderSavedAccounts(body) {
+  const list = $("saved-account-list");
+  list.replaceChildren();
+  if (!body.accounts.length) {
+    const empty = document.createElement("p");
+    empty.className = "muted";
+    empty.textContent = "还没有保存账号。点击上方按钮添加第一个账号。";
+    list.append(empty);
+    return;
+  }
+  for (const account of body.accounts) {
+    const row = document.createElement("article");
+    row.className = "saved-account-row";
+    const info = document.createElement("div");
+    const name = document.createElement("strong");
+    name.textContent = account.email || account.idHint;
+    const detail = document.createElement("p");
+    detail.className = "muted";
+    detail.textContent = `${account.idHint} · ${account.plan || "未知套餐"} · ${account.reauthenticationRequired ? "需要重新授权" : "已保存"}`;
+    info.append(name, detail);
+    const actions = document.createElement("div");
+    actions.className = "actions";
+    if (account.isDefault) {
+      const badge = document.createElement("span");
+      badge.className = "badge";
+      badge.textContent = "默认账号";
+      actions.append(badge);
+    } else {
+      const activate = document.createElement("button");
+      activate.type = "button";
+      activate.textContent = "设为默认";
+      activate.disabled = account.reauthenticationRequired || accountChangeInProgress;
+      activate.addEventListener("click", () => changeSavedAccount(account.id, false));
+      actions.append(activate);
+    }
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "danger";
+    remove.textContent = "移除";
+    remove.disabled = accountChangeInProgress;
+    remove.addEventListener("click", () => {
+      if (window.confirm(`移除 ${account.email || account.idHint} 在本网关保存的连接？`)) void changeSavedAccount(account.id, true);
+    });
+    actions.append(remove);
+    row.append(info, actions);
+    list.append(row);
+  }
+}
+
+async function loadSavedAccounts() {
+  const epoch = uiEpoch, token = ++accountListRequestToken;
+  try {
+    const body = await (await adminCall("/admin/accounts")).json();
+    if (epoch !== uiEpoch || token !== accountListRequestToken) return;
+    renderSavedAccounts(body);
+  } catch (error) {
+    if (epoch === uiEpoch && token === accountListRequestToken) setMessage("saved-account-message", error.message);
+  }
+}
+
+async function changeSavedAccount(id, remove) {
+  if (accountChangeInProgress) return;
+  if (requestController) { setMessage("saved-account-message", "请先完成或停止正在进行的模型测试。"); return; }
+  const epoch = uiEpoch;
+  accountChangeInProgress = true;
+  $("saved-account-list").querySelectorAll("button").forEach(button => { button.disabled = true; });
+  setMessage("saved-account-message", "");
+  try {
+    const body = await (await adminCall(`/admin/accounts/${id}${remove ? "" : "/activate"}`, {
+      method: remove ? "DELETE" : "POST", body: "{}"
+    })).json();
+    if (epoch !== uiEpoch) return;
+    accountRequestToken++;
+    modelRequestToken++;
+    accountListRequestToken++;
+    conversation = [];
+    $("transcript").textContent = "";
+    clearModels();
+    clearAccountOverview();
+    accountChangeInProgress = false;
+    renderSavedAccounts(body);
+    await checkStatus();
+    if (epoch === uiEpoch) setMessage("saved-account-message", remove ? "账号已移除。" : "默认账号已切换，现有 API 密钥将使用该账号。可重新加载模型开始测试。");
+  } catch (error) {
+    if (epoch === uiEpoch) setMessage("saved-account-message", error.message);
+  } finally {
+    accountChangeInProgress = false;
+    if (epoch === uiEpoch) await loadSavedAccounts();
+  }
+}

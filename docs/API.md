@@ -144,3 +144,16 @@ GET/HEAD /固定跳转/admin/login。GET /admin/login和GET /admin/仅提供无�
 ## FlareAPI Worker 后台 TCP 测速（已上线）
 
 POST /admin/webshare/measure，复用后台管理员鉴权与同源要求，JSON仅接受 {"nodeId":"已同步有效节点id"}。返回 nodeId、kind=tcp-connect、source=account-do、samples（latencyMs/error）、successCount、medianMs；三次TCP连接样本，失败latencyMs为null。每次3秒连接超时，调用间隔至少10秒，同组操作并发409。仅连接验证过的公网代理地址；无认证/HTTP传输，不切换或保存节点，不等同Codex或模型延迟。旧Worker无测量依赖时501，Node不支持此扩展。主应用已部署该接口，独立诊断Worker的接口/认证不同，见WEBSHARE-LATENCY-001。
+## 多账号管理（MULTI-ACCOUNT-001，待发布）
+
+管理员登录后使用以下同源管理接口；API调用key没有管理权限。沿用已有Cookie/Access/Bearer与CSRF/JSON边界。
+
+| 接口 | 行为 |
+| --- | --- |
+| GET /admin/accounts | 返回activeAccountId与accounts；身份提示、邮箱、套餐、保存/重新授权状态、默认标识，不返回token或密文 |
+| POST /admin/accounts/:id/activate | 空JSON对象，显式设为默认；返回最新列表 |
+| DELETE /admin/accounts/:id | 空JSON对象，移除单个保存账号；返回列表，移除默认后不自动选择其他账号 |
+
+:id来自列表，为43字符SHA-256 Base64URL内部标识。最多32个保存账号，重复授权同一账号更新已有项，容量满时仍可重新授权已有账号。/admin/device/start、poll、cancel继续接受原参数：首次成功授权成为默认，后续新增保留默认。账号默认选择持久化，所有现有key的/v1/models、Responses和Chat统一使用默认，无需重新生成key。
+
+切换/新移除在请求、流式生成或刷新进行中返回409 account_busy，待完成设备授权返回409 account_login_pending；没有账号404 account_not_found，需要重授权503 account_reauthentication_required。请求不会跨账号自动重试。旧POST /admin/disconnect保留立即取消请求和授权的兼容语义，仅删除默认账号；其他账号保留。仅恢复加密的单账号无需新的Secret。旧程序不能管理新增索引；版本回退请恢复同版本完整备份，避免旧程序写入后直接重升级。

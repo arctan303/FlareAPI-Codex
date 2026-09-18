@@ -191,6 +191,8 @@ export class UpstreamGateway {
     }
   }
 
+  hasActiveGenerations(): boolean { return this.activeGenerations.size > 0; }
+
   abortAllActive(): void {
     for (const controller of this.activeControllers) controller.abort(new Error("account disconnected"));
   }

@@ -1,10 +1,12 @@
 # OneAPI 开发计划与历史交接
 
-初始日期：2026-09-06；当前状态更新：2026-09-08。原路线：0→1；当前为 CODEX-PROVIDER-001 产品变更短任务与已有前端优化合并发布，不另建 Phase。
+初始日期：2026-09-06；当前状态更新：2026-09-18。原路线：0→1；当前为 MULTI-ACCOUNT-001 产品变更短任务，默认账号手动选择，不另建 Phase。
 
 ## 活跃计划
 
-当前维护小版本：[ACCESS-PROXY-001](maintenance/ACCESS-PROXY-001.md)，v0.2.0-dev.5。Access 公钥出站修复、针对性及原有验签回归、产物检查和 fresh R2 审查完成；FlareAPI Worker 100%上线且状态/资源隔离回读通过，GitHub已推送发布，标签/附件回读及回下载校验通过。真人Access浏览器回跳尚未独立验收。以下dev.4记录保留为此前交付历史。
+当前产品短任务：[MULTI-ACCOUNT-001](tasks/MULTI-ACCOUNT-001.md)，用户已确认保存多个账号并手动切换默认；本地实现、行为与页面验证完成，fresh R2 首审的重复刷新及聚焦发现的强制刷新并发回归已修复，Node65/65、Worker95/95及构建/实际迁移冒烟通过，fresh独立聚焦复核通过，两项问题关闭。用户最新回复“嗯”明确授权本次v0.2.0-dev.6推送及部署，正在核对线上基线与发布产物。
+
+最近维护小版本：[ACCESS-PROXY-001](maintenance/ACCESS-PROXY-001.md)，v0.2.0-dev.5。Access 公钥出站修复、针对性及原有验签回归、产物检查和 fresh R2 审查完成；FlareAPI Worker 100%上线且状态/资源隔离回读通过，GitHub已推送发布，标签/附件回读及回下载校验通过。真人Access浏览器回跳尚未独立验收。以下dev.4记录保留为此前交付历史。
 
 当前新增批次：CODEX-PROVIDER-001 已完成协议实现、真实 Codex 0.153.4 文本/只读工具续轮、未知字段真实请求、SDK/Worker/Node/浏览器/归档验证与 fresh R2 reviewer；既有分区后台和额度/key/日志优化已合并进入 v0.2.0-dev.4。提交、annotated tag、GitHub prerelease、附件回下载哈希及远端状态回读均已完成，远端 Node/Worker 未自动更新。
 

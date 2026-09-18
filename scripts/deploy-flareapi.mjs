@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {readFile,writeFile,readdir}from'node:fs/promises';
 import {createHash}from'node:crypto';
-export const ORIGIN='https://flareapi.12213443th.workers.dev';
+export const ORIGIN='https://flareapi.arctan.workers.dev';
 export const CONFIG='wrangler.flareapi.jsonc';
 export const SECRET_FILE='.env.worker-flareapi.json';
 export function assertAppConfig(c){

@@ -466,3 +466,10 @@ legend { padding: 0 5px; color: var(--muted); font-size: 12px; }
   #page-settings .section-head { align-items: flex-start; flex-direction: column; gap: 10px; }
   #page-settings .section-head .badge { align-self: flex-start; }
 }
+
+.saved-accounts { margin-top: 24px; }
+.saved-account-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 0; border-bottom: 1px solid var(--border, #ded9ce); }
+.saved-account-row > div:first-child { min-width: 0; overflow-wrap: anywhere; }
+.saved-account-row p { margin: 6px 0 0; }
+.saved-account-row .actions { flex-shrink: 0; margin: 0; }
+@media (max-width: 600px) { .saved-account-row { align-items: flex-start; flex-direction: column; } .saved-account-row .actions { flex-wrap: wrap; } }
