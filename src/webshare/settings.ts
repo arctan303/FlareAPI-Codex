@@ -1,5 +1,6 @@
 import { GatewayError } from "../errors";
 import { decryptJson,encryptJson } from "../security";
+import { normalizeTeamDomain } from "../access";
 import type { AccountStorage } from "../runtime/contracts";
 import type { EncryptedValue } from "../types";
 import { fetchWebshareNodes,validateWebshareApiKey,validateWebsharePlanId,validateWebshareProxy,type WebshareProxy,type WebshareApiFetch } from "./api";
@@ -25,6 +26,15 @@ export class WebshareSettings {
       nodes:state.nodes.map(p=>({id:p.id,host:p.host,port:p.port,countryCode:p.countryCode,valid:p.valid}))};
   }
   async outboundFetch(request:Request):Promise<Response> {
+    const url=new URL(request.url);
+    // Access signing keys are public control-plane data, independent of the Codex proxy.
+    if(request.method==="GET" && url.protocol==="https:" && !url.port && !url.username && !url.password && !url.search && !url.hash && url.pathname==="/cdn-cgi/access/certs") {
+      let accessTeam=false;
+      try { accessTeam=normalizeTeamDomain(url.hostname)===url.hostname; } catch { /* Other targets retain the existing proxy policy. */ }
+      if(accessTeam) return this.options.directFetch(new Request(url.href, {
+        method:"GET",headers:{Accept:"application/json"},redirect:"manual",signal:request.signal
+      }));
+    }
     const state=await this.state();
     const proxy=state.activeProxy===undefined?this.options.bootstrap:state.activeProxy;
     if (!proxy && this.options.requireProxy) throw new GatewayError(503,"webshare_proxy_required","请在设置中配置 Webshare 并启用节点。",undefined,"server_error");

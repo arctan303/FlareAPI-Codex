@@ -1,8 +1,8 @@
 # FlareAPI
 
-> v0.2.0-dev.4 完整接通 Codex 0.153.4 自定义 Responses provider，并合入分区后台、额度卡片、模型/key/日志交互优化。网络配置与 Tunnel / 公网 HTTPS / 反代安装见 [网络配置教程](docs/NETWORK.md)。
+> v0.2.0-dev.5 修复 Cloudflare Access 登录后无法进入后台的问题，保留 Codex 原生接入及现有管理后台能力。网络配置与 Tunnel / 公网 HTTPS / 反代安装见 [网络配置教程](docs/NETWORK.md)。
 
-当前预发布：[v0.2.0-dev.4](https://github.com/arctan303/OneAPI/releases/tag/v0.2.0-dev.4)。首次安装请下载 Release 的 `oneapi-server-*.tar.gz` 附件。
+当前版本：[v0.2.0-dev.5 发布说明](docs/releases/v0.2.0-dev.5.md)，[GitHub 小版本](https://github.com/arctan303/FlareAPI-Codex/releases/tag/v0.2.0-dev.5)。首次安装请下载 Release 的 `oneapi-server-*.tar.gz` 附件。
 
 个人 Codex 订阅网关。当前主路径是轻量单服务器：一个 Node.js 进程、一个业务 SQLite 数据库和原有静态管理后台/API。生产运行不依赖 Wrangler、Miniflare、workerd、Docker、Redis、D1 或 KV；Cloudflare Access 管理登录和管理员 API key 兜底继续保留。
 
@@ -90,9 +90,11 @@ node --env-file=.dev.vars dist/server/migrate.mjs --legacy-root .wrangler/state/
 
 ## FlareAPI Worker
 
-线上后台：[FlareAPI](https://flareapi.12213443th.workers.dev/admin/login)。当前版本 b72a7840-7d5f-4fb8-8325-5900ee7e9176，只需 `ADMIN_API_KEY` 登录密码，内部加密密钥持久保存在专属 DO。没有默认代理：后台填写 Webshare API key → 刷新节点列表 → 选择节点 → 独立测速或测试并启用；保存 key、同步和测速均不会自动启用。无启用节点时停止上游调用。第三方调用使用后台创建的 API key。
+线上后台：[FlareAPI](https://flareapi.12213443th.workers.dev/admin/login)。当前版本 60bcc6b6-be02-46ac-bf91-01a085aad3be（v0.2.0-dev.5），只需 `ADMIN_API_KEY` 登录密码，内部加密密钥持久保存在专属 DO。没有默认代理：后台填写 Webshare API key → 刷新节点列表 → 选择节点 → 独立测速或测试并启用；保存 key、同步和测速均不会自动启用。无启用节点时停止上游调用。第三方调用使用后台创建的 API key。
 
 后台测速从账号 DO 发起，显示三次 TCP 连接耗时中位数与成功次数，结果不切换出口。当前实例尚未连接 Codex、没有节点；需填写自己的 Webshare key并启用节点后连接账号。当前平台运行时仅 ADMIN_API_KEY Secret，加上必要 ACCOUNT/ASSETS 绑定；原多余变量已清理。
+
+Access 公钥读取独立直连 Cloudflare，不受 Webshare 节点配置影响；完整 JWT 验签继续保留。修复及发布证据见 [ACCESS-PROXY-001](docs/maintenance/ACCESS-PROXY-001.md)。
 
 配置见 [wrangler.flareapi.jsonc](wrangler.flareapi.jsonc)，发布验证见 [FLAREAPI-RELEASE-002](docs/tasks/FLAREAPI-RELEASE-002.md)。`scripts/deploy-flareapi.mjs` 仍只做本地准备；`scripts/release-flareapi.mjs` 是从原多变量版本迁入私有密钥的一次性受控发布流程，不对已迁移状态重复初始化。被忽略的 `.env.worker-flareapi.json` 只保留登录密码；原秘密备份 `.env.worker-flareapi.legacy.json` 保留用于恢复，勿重生成既有加密密钥。历史发布附件、GitHub链接和兼容接口标识仍使用旧名称。
 从新仓库准备Worker构建：先运行 `npm ci`，再运行 `npm run worker:tls:prepare`，最后运行 `npx wrangler deploy --config wrangler.flareapi.jsonc --dry-run`。独立TLS依赖锁定于 vendor/tls-runtime，准备脚本会安装并校验已有严格证书验证补丁；不会生成/上传登录密钥。部署自己的实例时先将配置中的Worker名称、account_id和编译origin改为自己的目标，添加ADMIN_API_KEY Secret；已有实例沿用原DO和内部持久密钥。

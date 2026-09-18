@@ -4,6 +4,8 @@
 
 ## 活跃计划
 
+当前维护小版本：[ACCESS-PROXY-001](maintenance/ACCESS-PROXY-001.md)，v0.2.0-dev.5。Access 公钥出站修复、针对性及原有验签回归、产物检查和 fresh R2 审查完成；FlareAPI Worker 100%上线且状态/资源隔离回读通过，GitHub推送发布准备完成。真人Access浏览器回跳尚未独立验收。以下dev.4记录保留为此前交付历史。
+
 当前新增批次：CODEX-PROVIDER-001 已完成协议实现、真实 Codex 0.153.4 文本/只读工具续轮、未知字段真实请求、SDK/Worker/Node/浏览器/归档验证与 fresh R2 reviewer；既有分区后台和额度/key/日志优化已合并进入 v0.2.0-dev.4。提交、annotated tag、GitHub prerelease、附件回下载哈希及远端状态回读均已完成，远端 Node/Worker 未自动更新。
 
 此前完成：[CONSOLE-NET-001](tasks/CONSOLE-NET-001.md)，命令行网络配置向导、显式私网访问和六区管理后台；本地实施、浏览器验收与网络边界独立复核均已完成，新版已在127.0.0.1:8787启动。已随 v0.2.0-dev.2 测试版推送发布，安装包回下载核对通过，见 [RELEASE-003](verification/RELEASE-003.md)。

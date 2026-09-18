@@ -63,7 +63,7 @@ test('manifest-only artifact starts outside the repository with no npm install',
     await health.arrayBuffer();
     const page = await fetch(ready.listen + '/', { signal: AbortSignal.timeout(5000) });
     assert.equal(page.status, 200);
-    assert.match(await page.text(), /OneAPI/);
+    assert.match(await page.text(), /<h1>FlareAPI 管理后台<\/h1>/);
     const protectedRoute = await fetch(ready.listen + '/admin/status');
     assert.equal(protectedRoute.status, 401);
     await protectedRoute.arrayBuffer();
